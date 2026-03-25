@@ -35,7 +35,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id
-        token.role = (user as { role: string }).role
+        token.role = (user as { role: string }).role as 'admin' | 'user'
       }
       // Allow client-side session.update() to refresh name/email in the token
       if (trigger === 'update' && session) {
