@@ -5,13 +5,14 @@ import Tenant from '@/models/Tenant'
 import Door from '@/models/Door'
 import { UserAccessClient } from './UserAccessClient'
 
-interface PageProps { params: { id: string } }
+interface PageProps { params: Promise<{ id: string }> }
 
 export default async function UserAccessPage({ params }: PageProps) {
+  const { id } = await params
   await connectDB()
 
   const [user, tenants] = await Promise.all([
-    User.findById(params.id).select('-passwordHash').lean(),
+    User.findById(id).select('-passwordHash').lean(),
     Tenant.find().sort({ name: 1 }).lean(),
   ])
   if (!user) notFound()

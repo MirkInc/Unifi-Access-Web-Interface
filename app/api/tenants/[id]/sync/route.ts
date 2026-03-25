@@ -7,16 +7,17 @@ import Door from '@/models/Door'
 import { clientForTenant } from '@/lib/unifi'
 import { localTodayMidnight, backfillDoorLogs } from '@/lib/logCache'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function POST(_req: Request, { params }: Params) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   await connectDB()
-  const tenant = await Tenant.findById(params.id)
+  const tenant = await Tenant.findById(id)
   if (!tenant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Fetch live doors from UniFi controller
@@ -37,7 +38,7 @@ export async function POST(_req: Request, { params }: Params) {
   // Upsert each door from UniFi
   for (const ud of unifiDoors) {
     await Door.findOneAndUpdate(
-      { tenantId: params.id, unifiDoorId: ud.id },
+      { tenantId: id, unifiDoorId: ud.id },
       {
         name: ud.name,
         fullName: ud.full_name ?? ud.name,
@@ -53,16 +54,16 @@ export async function POST(_req: Request, { params }: Params) {
   // Mark doors that are no longer in UniFi as inactive
   await Door.updateMany(
     {
-      tenantId: params.id,
+      tenantId: id,
       unifiDoorId: { $nin: Array.from(unifiIds) },
     },
     { isActive: false }
   )
 
   // Update last sync time on tenant
-  await Tenant.findByIdAndUpdate(params.id, { lastDoorSync: now })
+  await Tenant.findByIdAndUpdate(id, { lastDoorSync: now })
 
-  const doors = await Door.find({ tenantId: params.id }).sort({ name: 1 }).lean()
+  const doors = await Door.find({ tenantId: id }).sort({ name: 1 }).lean()
 
   // Trigger background log cache backfill for any active door that is uncached or stale.
   // "Stale" means logsCachedThrough is before today's midnight in the tenant's timezone.

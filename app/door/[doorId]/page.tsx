@@ -14,12 +14,13 @@ import { DoorDetailClient } from './DoorDetailClient'
 import type { DoorStatus } from '@/types'
 
 interface PageProps {
-  params: { doorId: string }
+  params: Promise<{ doorId: string }>
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { doorId } = await params
   await connectDB()
-  const door = await Door.findById(params.doorId).select('name tenantId').lean()
+  const door = await Door.findById(doorId).select('name tenantId').lean()
   if (!door) return { title: 'Console | Door' }
 
   const tenant = await Tenant.findById(door.tenantId).select('name').lean()
@@ -28,6 +29,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function DoorDetailPage({ params }: PageProps) {
+  const { doorId } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
@@ -35,7 +37,7 @@ export default async function DoorDetailPage({ params }: PageProps) {
 
   await connectDB()
 
-  const door = await Door.findById(params.doorId).lean()
+  const door = await Door.findById(doorId).lean()
   if (!door) notFound()
 
   const tenantId = door.tenantId.toString()

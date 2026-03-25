@@ -14,13 +14,14 @@ import { DashboardClient } from './DashboardClient'
 import type { DoorStatus, UnifiDoor } from '@/types'
 
 interface PageProps {
-  searchParams: { tenantId?: string }
+  searchParams: Promise<{ tenantId?: string }>
 }
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  const { tenantId } = await searchParams
   await connectDB()
-  const cookieStore = cookies()
-  const selectedTenantId = searchParams?.tenantId ?? cookieStore.get('selectedTenant')?.value
+  const cookieStore = await cookies()
+  const selectedTenantId = tenantId ?? cookieStore.get('selectedTenant')?.value
   if (!selectedTenantId) return { title: 'Console' }
 
   const tenant = await Tenant.findById(selectedTenantId).select('name').lean()
@@ -29,6 +30,7 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {
+  const { tenantId: searchTenantId } = await searchParams
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
@@ -51,9 +53,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   if (accessibleTenantIds.length === 0) redirect('/')
 
   // Resolve selected tenant
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const cookieTenantId = cookieStore.get('selectedTenant')?.value
-  const requestedId = searchParams.tenantId ?? cookieTenantId
+  const requestedId = searchTenantId ?? cookieTenantId
 
   let selectedTenantId = accessibleTenantIds.includes(requestedId ?? '')
     ? requestedId!

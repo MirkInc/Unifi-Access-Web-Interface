@@ -8,7 +8,7 @@ import type { UnifiLogEntry } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
-type Params = { params: { tenantId: string } }
+type Params = { params: Promise<{ tenantId: string }> }
 
 function getPayloadActor(payload: Record<string, unknown>): { id?: string; name?: string } | null {
   const data = payload.data as Record<string, unknown> | undefined
@@ -155,7 +155,7 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
 }
 
 export async function POST(req: Request, { params }: Params) {
-  const { tenantId } = params
+  const { tenantId } = await params
 
   // Read raw body for HMAC verification
   const rawBody = await req.text()

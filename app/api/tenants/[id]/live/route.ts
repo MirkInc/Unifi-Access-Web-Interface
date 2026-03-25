@@ -7,14 +7,14 @@ import Tenant from '@/models/Tenant'
 import User from '@/models/User'
 import { clientForTenant } from '@/lib/unifi'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: Params) {
+  const { id: tenantId } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sessionUser = session.user as { id: string; role: string }
-  const tenantId = params.id
 
   await connectDB()
 

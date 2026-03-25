@@ -21,7 +21,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   await connectDB()
   const tenants = await Tenant.find().select('name').sort({ name: 1 }).lean()
   const tenantList = tenants.map((t) => ({ _id: t._id.toString(), name: t.name }))
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const cookieTenantId = cookieStore.get('selectedTenant')?.value
   const currentTenantId =
     tenantList.find((t) => t._id === cookieTenantId)?._id ??

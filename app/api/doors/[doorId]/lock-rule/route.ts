@@ -8,7 +8,7 @@ import User from '@/models/User'
 import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
 
-type Params = { params: { doorId: string } }
+type Params = { params: Promise<{ doorId: string }> }
 type LockRuleType = 'keep_lock' | 'keep_unlock' | 'custom' | 'reset' | 'lock_early'
 
 // Determine which permission is needed for a given lock rule type
@@ -27,6 +27,7 @@ function requiredPermission(type: LockRuleType): keyof {
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const { doorId } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -36,7 +37,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (!type) return NextResponse.json({ error: 'type is required' }, { status: 400 })
 
   await connectDB()
-  const door = await Door.findById(params.doorId)
+  const door = await Door.findById(doorId)
   if (!door) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const sessionUser = session.user as { id: string; role: string; name?: string }

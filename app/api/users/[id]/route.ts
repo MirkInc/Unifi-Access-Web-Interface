@@ -9,21 +9,23 @@ import PasswordResetToken from '@/models/PasswordResetToken'
 import { generateToken } from '@/lib/utils'
 import { sendEmailChangeNotification, sendEmailConfirmation } from '@/lib/mail'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: Request, { params }: Params) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   await connectDB()
-  const user = await User.findById(params.id).select('-passwordHash').lean()
+  const user = await User.findById(id).select('-passwordHash').lean()
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json(user)
 }
 
 export async function PUT(req: Request, { params }: Params) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -34,7 +36,7 @@ export async function PUT(req: Request, { params }: Params) {
 
   await connectDB()
 
-  const user = await User.findById(params.id)
+  const user = await User.findById(id)
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const update: Record<string, unknown> = {}
@@ -47,7 +49,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (email && email.toLowerCase().trim() !== user.email) {
     const newEmail = email.toLowerCase().trim()
     const existing = await User.findOne({ email: newEmail })
-    if (existing && existing._id.toString() !== params.id) {
+    if (existing && existing._id.toString() !== id) {
       return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
     }
     update.pendingEmail = newEmail
@@ -69,18 +71,19 @@ export async function PUT(req: Request, { params }: Params) {
     ]).catch(console.error)
   }
 
-  const updated = await User.findByIdAndUpdate(params.id, update, { new: true }).select('-passwordHash')
+  const updated = await User.findByIdAndUpdate(id, update, { new: true }).select('-passwordHash')
   revalidatePath('/admin/users')
   return NextResponse.json(updated)
 }
 
 export async function DELETE(_req: Request, { params }: Params) {
+  const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   await connectDB()
-  await User.findByIdAndDelete(params.id)
+  await User.findByIdAndDelete(id)
   return NextResponse.json({ success: true })
 }
