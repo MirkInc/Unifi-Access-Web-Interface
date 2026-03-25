@@ -5,7 +5,7 @@ import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { clientForTenant } from '@/lib/unifi'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 const WEBHOOK_EVENTS = [
   'access.door.unlock',
@@ -25,6 +25,7 @@ async function requireAdmin() {
 
 // POST — register a new webhook
 export async function POST(req: Request, { params }: Params) {
+  const { id } = await params
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
@@ -36,10 +37,10 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   await connectDB()
-  const tenant = await Tenant.findById(params.id)
+  const tenant = await Tenant.findById(id)
   if (!tenant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const endpoint = `${baseUrl}/api/webhooks/unifi/${params.id}`
+  const endpoint = `${baseUrl}/api/webhooks/unifi/${id}`
   const client = clientForTenant(tenant)
 
   let webhook: { id: string; secret: string; endpoint: string; events: string[] }
@@ -62,12 +63,13 @@ export async function POST(req: Request, { params }: Params) {
 
 // DELETE — unregister webhook
 export async function DELETE(_req: Request, { params }: Params) {
+  const { id } = await params
   if (!(await requireAdmin())) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   await connectDB()
-  const tenant = await Tenant.findById(params.id)
+  const tenant = await Tenant.findById(id)
   if (!tenant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (tenant.webhookId) {

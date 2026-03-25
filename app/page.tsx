@@ -130,7 +130,7 @@ export default async function HomePage() {
     })
   )
 
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const cookieTenantId = cookieStore.get('selectedTenant')?.value
   const currentTenantId = accessibleTenantIds.includes(cookieTenantId ?? '')
     ? cookieTenantId!

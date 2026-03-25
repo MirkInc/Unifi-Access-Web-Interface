@@ -10,7 +10,7 @@ import User from '@/models/User'
 import WebSocket from 'ws'
 import https from 'https'
 
-type Params = { params: { id: string } }
+type Params = { params: Promise<{ id: string }> }
 
 // Events from UniFi that carry door state changes
 const DOOR_EVENTS = new Set([
@@ -29,11 +29,11 @@ const DOOR_EVENTS = new Set([
 ])
 
 export async function GET(req: Request, { params }: Params) {
+  const { id: tenantId } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const sessionUser = session.user as { id: string; role: string }
-  const tenantId = params.id
 
   await connectDB()
 

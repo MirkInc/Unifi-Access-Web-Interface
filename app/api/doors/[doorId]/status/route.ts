@@ -7,14 +7,15 @@ import Tenant from '@/models/Tenant'
 import User from '@/models/User'
 import { clientForTenant } from '@/lib/unifi'
 
-type Params = { params: { doorId: string } }
+type Params = { params: Promise<{ doorId: string }> }
 
 export async function GET(_req: Request, { params }: Params) {
+  const { doorId } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   await connectDB()
-  const door = await Door.findById(params.doorId)
+  const door = await Door.findById(doorId)
   if (!door) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Verify user has access to this door's tenant
