@@ -36,15 +36,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     accessibleTenantIds = user.tenantAccess.map((ta) => ta.tenantId.toString())
   }
 
-  if (accessibleTenantIds.length === 0) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="card p-8 max-w-sm text-center">
-          <p className="text-gray-500">No sites assigned to your account. Contact your administrator.</p>
-        </div>
-      </div>
-    )
-  }
+  if (accessibleTenantIds.length === 0) redirect('/')
 
   // Resolve selected tenant
   const cookieStore = cookies()
@@ -132,12 +124,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     }
   })
 
-  // Only show doors the user has any permission on (or is admin)
+  // For non-admin users, visibility is based on assigned door entries.
+  // A door can be view-only even when all action/log flags are false.
   const visibleDoors = sessionUser.role === 'admin'
     ? doorStatuses
     : doorStatuses.filter((d) => {
-        const p = doorPermissions[d.id]
-        return p && Object.values(p).some(Boolean)
+        return d.id in doorPermissions
       })
 
   return (

@@ -32,7 +32,7 @@ export function AdminUserMenu({ userName }: { userName: string }) {
           <div className="border-t border-gray-100" />
           <button
             className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
-            onClick={() => signOut({ callbackUrl: '/login' })}
+            onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
           >
             Sign out
           </button>

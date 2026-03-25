@@ -7,7 +7,7 @@ import { ActivityChart, type RangeType } from '@/components/ActivityChart'
 import { ActivityLogTable } from '@/components/ActivityLogTable'
 import { cn } from '@/lib/utils'
 import { DateRangePicker } from '@/components/DateRangePicker'
-import type { DoorStatus } from '@/types'
+import type { DoorStatus, UnifiLogEntry } from '@/types'
 
 interface Props {
   door: DoorStatus
@@ -31,6 +31,7 @@ const QUICK_RANGES: { label: string; value: RangeType }[] = [
   { label: '3M', value: '3M' },
   { label: 'Custom', value: 'custom' },
 ]
+const MIN_STATUS_REFRESH_MS = 1500
 
 function toDateInput(ts: number) {
   return new Date(ts * 1000).toISOString().slice(0, 10)
@@ -68,6 +69,10 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const [refreshKey, setRefreshKey] = useState(0)
   const controlRef = useRef<HTMLDivElement>(null)
   const badgeRef = useRef<HTMLSpanElement>(null)
+  const statusInFlightRef = useRef(false)
+  const statusQueuedRef = useRef(false)
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastStatusFetchAtRef = useRef(0)
 
   useEffect(() => {
     function onScroll() {
@@ -84,6 +89,8 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const [range, setRange] = useState<RangeType>('1D')
   const [customStart, setCustomStart] = useState(() => toDateInput(Math.floor(Date.now() / 1000) - 7 * 86400))
   const [customEnd, setCustomEnd] = useState(() => toDateInput(Math.floor(Date.now() / 1000)))
+  const [sharedLogs, setSharedLogs] = useState<UnifiLogEntry[]>([])
+  const [sharedLogsLoading, setSharedLogsLoading] = useState(true)
 
   const { since, until } = useMemo(
     () => computeWindow(range, customStart, customEnd),
@@ -92,53 +99,130 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const rangeLabel = formatRangeLabel(since, until, range)
   const logPageSize = range === '1D' ? 500 : range === '1W' ? 1000 : range === '1M' ? 2000 : 3000
 
-  const refreshStatus = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false
+
+    async function fetchSharedLogs() {
+      setSharedLogsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          tenantId: door.tenantId,
+          doorId: door.id,
+          since: String(since),
+          until: String(until),
+          pageSize: String(logPageSize),
+        })
+        const res = await fetch(`/api/logs?${params}`, { cache: 'no-store' })
+        if (!res.ok || cancelled) return
+        const data: UnifiLogEntry[] = await res.json()
+        if (!cancelled) setSharedLogs(data)
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setSharedLogsLoading(false)
+      }
+    }
+
+    fetchSharedLogs()
+    return () => { cancelled = true }
+  }, [door.tenantId, door.id, since, until, logPageSize, refreshKey])
+
+  const fetchStatusNow = useCallback(async () => {
+    if (statusInFlightRef.current) {
+      statusQueuedRef.current = true
+      return
+    }
+
+    statusInFlightRef.current = true
     try {
       const res = await fetch(`/api/doors/${door.id}/status`)
       if (res.ok) setDoor(await res.json())
     } catch { /* ignore */ }
+    finally {
+      statusInFlightRef.current = false
+      lastStatusFetchAtRef.current = Date.now()
+
+      if (statusQueuedRef.current) {
+        statusQueuedRef.current = false
+        const waitMs = Math.max(0, MIN_STATUS_REFRESH_MS - (Date.now() - lastStatusFetchAtRef.current))
+        if (waitMs === 0) {
+          void fetchStatusNow()
+        } else if (!statusTimerRef.current) {
+          statusTimerRef.current = setTimeout(() => {
+            statusTimerRef.current = null
+            void fetchStatusNow()
+          }, waitMs)
+        }
+      }
+    }
   }, [door.id])
+
+  const queueStatusRefresh = useCallback((force = false) => {
+    if (force) {
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current)
+        statusTimerRef.current = null
+      }
+      void fetchStatusNow()
+      return
+    }
+
+    const waitMs = Math.max(0, MIN_STATUS_REFRESH_MS - (Date.now() - lastStatusFetchAtRef.current))
+    if (waitMs === 0) {
+      void fetchStatusNow()
+      return
+    }
+    if (statusTimerRef.current) return
+    statusTimerRef.current = setTimeout(() => {
+      statusTimerRef.current = null
+      void fetchStatusNow()
+    }, waitMs)
+  }, [fetchStatusNow])
 
   const refresh = useCallback(async () => {
     // Small delay to let UniFi apply the change before we query it back
     await new Promise((r) => setTimeout(r, 400))
-    await refreshStatus()
+    await fetchStatusNow()
     setRefreshKey((k) => k + 1)
     // Second pass in case controller was still processing
     setTimeout(async () => {
-      await refreshStatus()
+      await fetchStatusNow()
       setRefreshKey((k) => k + 1)
     }, 1500)
-  }, [refreshStatus])
+  }, [fetchStatusNow])
 
   // Immediately correct any stale server-rendered state on mount
   useEffect(() => {
-    refreshStatus()
-  }, [refreshStatus])
+    queueStatusRefresh(true)
+  }, [queueStatusRefresh])
 
   useEffect(() => {
     let es: EventSource | null = null
     let pollId: ReturnType<typeof setInterval> | null = null
 
     es = new EventSource(`/api/tenants/${door.tenantId}/events`)
-    es.addEventListener('door_update', () => refreshStatus())
+    es.addEventListener('door_update', () => queueStatusRefresh())
     es.addEventListener('error', () => {
       es?.close()
       es = null
-      if (!pollId) pollId = setInterval(refreshStatus, 10_000)
+      if (!pollId) pollId = setInterval(queueStatusRefresh, 10_000)
     })
 
     return () => {
       es?.close()
       if (pollId) clearInterval(pollId)
+      if (statusTimerRef.current) {
+        clearTimeout(statusTimerRef.current)
+        statusTimerRef.current = null
+      }
     }
-  }, [door.tenantId, refreshStatus])
-
-  const hasAnyControl =
-    permissions.canUnlock || permissions.canTempLock ||
-    permissions.canEndLockSchedule || permissions.canEndTempLock
+  }, [door.tenantId, queueStatusRefresh])
 
   const isUnlocked = door.lockStatus === 'unlock'
+  const isUnauthorizedOpening =
+    door.positionStatus === 'open' &&
+    door.lockStatus === 'lock' &&
+    door.lockRule?.type !== 'keep_lock'
 
   return (
     <>
@@ -173,22 +257,37 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
       )}
 
       <div ref={controlRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {hasAnyControl && (
-          <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} />
-        )}
+        <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} />
 
         <div className="card p-5 space-y-3">
           <h2 className="font-semibold text-gray-900">Door Status</h2>
+          {isUnauthorizedOpening && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              Unauthorized Opening
+            </div>
+          )}
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Lock</span>
-              <span className={door.lockStatus === 'unlock' ? 'text-[#006FFF] font-medium' : 'text-gray-700'}>
+              <span className={
+                isUnauthorizedOpening
+                  ? 'text-red-600 font-medium'
+                  : door.lockStatus === 'unlock'
+                  ? 'text-[#006FFF] font-medium'
+                  : 'text-gray-700'
+              }>
                 {door.lockStatus === 'unlock' ? 'Unlocked' : door.lockStatus === 'lock' ? 'Locked' : '—'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Position</span>
-              <span className={door.positionStatus === 'open' ? 'text-amber-500 font-medium' : 'text-gray-700'}>
+              <span className={
+                isUnauthorizedOpening
+                  ? 'text-red-600 font-medium'
+                  : door.positionStatus === 'open'
+                  ? 'text-amber-500 font-medium'
+                  : 'text-gray-700'
+              }>
                 {door.positionStatus === 'open' ? 'Open' : door.positionStatus === 'close' ? 'Closed' : '—'}
               </span>
             </div>
@@ -251,6 +350,8 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
               rangeLabel={rangeLabel}
               refreshTrigger={refreshKey}
               pageSize={logPageSize}
+              externalLogs={sharedLogs}
+              externalLoading={sharedLogsLoading}
             />
           </div>
 
@@ -269,6 +370,8 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
               pageSize={logPageSize}
               timezone={timezone}
               refreshTrigger={refreshKey}
+              accessLogsOverride={sharedLogs}
+              accessLogsLoadingOverride={sharedLogsLoading}
             />
           </div>
         </>

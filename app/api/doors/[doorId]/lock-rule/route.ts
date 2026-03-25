@@ -5,6 +5,7 @@ import { connectDB } from '@/lib/mongodb'
 import Door from '@/models/Door'
 import Tenant from '@/models/Tenant'
 import User from '@/models/User'
+import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
 
 type Params = { params: { doorId: string } }
@@ -62,7 +63,51 @@ export async function PUT(req: Request, { params }: Params) {
 
   try {
     const client = clientForTenant(tenant)
+    const currentRule = type === 'reset'
+      ? await client.getLockRule(door.unifiDoorId).catch(() => null)
+      : null
+
     await client.setLockRule(door.unifiDoorId, type, interval)
+
+    let portalEvent = 'portal.lock_rule.changed'
+    if (type === 'keep_lock') portalEvent = 'portal.lockdown.start'
+    else if (type === 'keep_unlock' || type === 'custom') portalEvent = 'portal.temp_unlock.start'
+    else if (type === 'lock_early') portalEvent = 'portal.schedule.lock_early'
+    else if (type === 'reset') {
+      if (currentRule?.type === 'keep_lock') portalEvent = 'portal.lockdown.end'
+      else if (currentRule?.type === 'keep_unlock' || currentRule?.type === 'custom') portalEvent = 'portal.temp_unlock.end'
+      else portalEvent = 'portal.lock_rule.reset'
+    }
+
+    // Audit log for actions initiated from this portal
+    WebhookEvent.create({
+      tenantId: door.tenantId,
+      unifiDoorId: door.unifiDoorId,
+      event: portalEvent,
+      timestamp: new Date(),
+      payload: {
+        source: 'portal',
+        event: portalEvent,
+        data: {
+          actor: {
+            id: sessionUser.id,
+            name: sessionUser.name ?? 'Portal User',
+            type: 'user',
+          },
+          location: {
+            id: door.unifiDoorId,
+            location_type: 'door',
+            name: door.name,
+          },
+          object: {
+            type,
+            interval: typeof interval === 'number' ? interval : null,
+            previous_type: currentRule?.type ?? null,
+          },
+        },
+      },
+    }).catch((err) => console.error('[portal-log] lock-rule audit write failed:', err))
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json(

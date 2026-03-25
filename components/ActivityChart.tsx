@@ -16,6 +16,8 @@ interface Props {
   rangeLabel: string
   refreshTrigger?: number
   pageSize?: number
+  externalLogs?: UnifiLogEntry[] | null
+  externalLoading?: boolean
 }
 
 
@@ -71,10 +73,22 @@ function bucketLogs(logs: UnifiLogEntry[], since: number, until: number, rangeTy
   return slots.map(({ time, granted, denied }) => ({ time, granted, denied }))
 }
 
-export function ActivityChart({ doorId, tenantId, since, until, rangeType, rangeLabel, refreshTrigger, pageSize = 500 }: Props) {
+export function ActivityChart({
+  doorId,
+  tenantId,
+  since,
+  until,
+  rangeType,
+  rangeLabel,
+  refreshTrigger,
+  pageSize = 500,
+  externalLogs,
+  externalLoading = false,
+}: Props) {
   const [logs, setLogs] = useState<UnifiLogEntry[]>([])
   const [loading, setLoading] = useState(true)
   const fetchCountRef = useRef(0)
+  const useExternal = externalLogs !== undefined
 
   const fetchLogs = useCallback(async (silent = false) => {
     const myCount = ++fetchCountRef.current
@@ -91,25 +105,32 @@ export function ActivityChart({ doorId, tenantId, since, until, rangeType, range
   }, [doorId, tenantId, since, until, pageSize])
 
   // Full reload when range changes
-  useEffect(() => { fetchLogs(false) }, [fetchLogs])
+  useEffect(() => {
+    if (useExternal) return
+    fetchLogs(false)
+  }, [fetchLogs, useExternal])
 
   // Silent refresh on action trigger
   const prevTrigger = useRef(refreshTrigger)
   useEffect(() => {
+    if (useExternal) return
     if (refreshTrigger === prevTrigger.current) return
     prevTrigger.current = refreshTrigger
     fetchLogs(true)
-  }, [refreshTrigger, fetchLogs])
+  }, [refreshTrigger, fetchLogs, useExternal])
 
   // Periodic silent refresh every 30s
   useEffect(() => {
+    if (useExternal) return
     const id = setInterval(() => fetchLogs(true), 60_000)
     return () => clearInterval(id)
-  }, [fetchLogs])
+  }, [fetchLogs, useExternal])
 
-  const data = bucketLogs(logs, since, until, rangeType)
-  const granted = logs.filter((l) => !isAccessDenied(l)).length
-  const denied = logs.filter(isAccessDenied).length
+  const effectiveLogs = useExternal ? (externalLogs ?? []) : logs
+  const effectiveLoading = useExternal ? externalLoading : loading
+  const data = bucketLogs(effectiveLogs, since, until, rangeType)
+  const granted = effectiveLogs.filter((l) => !isAccessDenied(l)).length
+  const denied = effectiveLogs.filter(isAccessDenied).length
 
   return (
     <div>
@@ -128,7 +149,7 @@ export function ActivityChart({ doorId, tenantId, since, until, rangeType, range
       </div>
 
       <div className="h-64">
-        {loading ? (
+        {effectiveLoading ? (
           <div className="h-full flex items-center justify-center text-gray-400 text-sm">Loading…</div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">

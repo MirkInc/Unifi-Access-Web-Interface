@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 interface Props {
   initialName: string
@@ -25,7 +24,13 @@ export function ProfileClient({ initialName, initialEmail, role }: Props) {
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
 
-  const backHref = role === 'admin' ? '/admin' : '/dashboard'
+  function handleBack() {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back()
+      return
+    }
+    router.push(role === 'admin' ? '/admin' : '/')
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -75,11 +80,16 @@ export function ProfileClient({ initialName, initialEmail, role }: Props) {
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center gap-3">
-          <Link href={backHref} className="text-gray-500 hover:text-gray-700 transition-colors">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="text-gray-500 hover:text-gray-700 transition-colors"
+            aria-label="Go back"
+          >
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
               <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
             </svg>
-          </Link>
+          </button>
           <h1 className="font-semibold text-gray-900">My Profile</h1>
         </div>
       </header>

@@ -172,7 +172,7 @@ export class UnifiClient {
   }
 
   async listWebhooks(): Promise<any[]> {
-    return this.request<any[]>('/api/v1/developer/webhooks')
+    return this.request<any[]>('/api/v1/developer/webhooks/endpoints')
   }
 
   async registerWebhook(
@@ -181,7 +181,7 @@ export class UnifiClient {
     events: string[]
   ): Promise<{ id: string; secret: string; endpoint: string; events: string[] }> {
     return this.request<{ id: string; secret: string; endpoint: string; events: string[] }>(
-      '/api/v1/developer/webhooks',
+      '/api/v1/developer/webhooks/endpoints',
       {
         method: 'POST',
         body: JSON.stringify({ name, endpoint, events }),
@@ -190,7 +190,7 @@ export class UnifiClient {
   }
 
   async deleteWebhook(id: string): Promise<void> {
-    await this.request(`/api/v1/developer/webhooks/${id}`, { method: 'DELETE' })
+    await this.request(`/api/v1/developer/webhooks/endpoints/${id}`, { method: 'DELETE' })
   }
 
   async testConnection(): Promise<boolean> {

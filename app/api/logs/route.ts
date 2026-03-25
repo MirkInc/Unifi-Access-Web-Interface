@@ -69,6 +69,7 @@ export async function GET(req: Request) {
   if (unifiActorId && door && since && until) {
     const sinceNum = Number(since)
     const untilNum = Number(until)
+    const pastDays = localPastDaysInRange(sinceNum, untilNum, tz, todayMidnight)
 
     // ✅ FAST PATH: cache is fully up-to-date — only hit UniFi for today
     if (door.logsCachedThrough && door.logsCachedThrough >= todayMidnight) {
@@ -76,7 +77,6 @@ export async function GET(req: Request) {
       const todayLogs = await client.getLogs({ topic, since: todayMidnightTs, until: untilNum, pageSize })
       const todayFiltered = todayLogs.filter(isThisDoor)
 
-      const pastDays = localPastDaysInRange(sinceNum, untilNum, tz, todayMidnight)
       const cached = await LogCache.find({
         tenantId,
         unifiDoorId: unifiActorId,
@@ -92,21 +92,29 @@ export async function GET(req: Request) {
       )
     }
 
-    // 🔄 STALE or NULL: trigger background backfill so the next visit uses the fast path.
+    // 🔄 STALE or NULL: backfill missing complete past days before serving, so
+    // first load after midnight can immediately use DB for prior days.
     const doorRef = { _id: door._id, unifiDoorId: unifiActorId }
     const tenantRef = { _id: tenant._id, unifiHost: tenant.unifiHost, unifiApiKey: tenant.unifiApiKey, timezone: tz }
     if (door.logsCachedThrough && door.logsCachedThrough < todayMidnight) {
-      // Stale — only fetch the gap since last cache
+      // Stale — fetch the full gap since last cache through end of yesterday.
       const gapSince = Math.floor(door.logsCachedThrough.getTime() / 1000)
-      backfillDoorLogs(doorRef, tenantRef, topic, gapSince).catch(console.error)
+      try {
+        await backfillDoorLogs(doorRef, tenantRef, topic, gapSince)
+      } catch (err) {
+        console.error('[/api/logs] backfill error (stale):', (err as Error).message)
+      }
     } else if (!door.logsCachedThrough) {
-      // Never cached — fetch all available history
-      backfillDoorLogs(doorRef, tenantRef, topic).catch(console.error)
+      // Never cached — fetch all available history through end of yesterday.
+      try {
+        await backfillDoorLogs(doorRef, tenantRef, topic)
+      } catch (err) {
+        console.error('[/api/logs] backfill error (uncached):', (err as Error).message)
+      }
     }
 
     // Check if the requested range is already covered by existing per-day cache entries
     // (could be from a previous wider fetch or from the sync backfill still in progress)
-    const pastDays = localPastDaysInRange(sinceNum, untilNum, tz, todayMidnight)
     if (pastDays.length > 0) {
       const cached = await LogCache.find({
         tenantId,

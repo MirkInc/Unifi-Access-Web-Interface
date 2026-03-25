@@ -31,9 +31,22 @@ interface Props {
   pageSize?: number
   timezone?: string
   refreshTrigger?: number
+  accessLogsOverride?: UnifiLogEntry[] | null
+  accessLogsLoadingOverride?: boolean
 }
 
-export function ActivityLogTable({ tenantId, doorId, showExport = false, since, until, pageSize = 100, timezone, refreshTrigger }: Props) {
+export function ActivityLogTable({
+  tenantId,
+  doorId,
+  showExport = false,
+  since,
+  until,
+  pageSize = 100,
+  timezone,
+  refreshTrigger,
+  accessLogsOverride,
+  accessLogsLoadingOverride = false,
+}: Props) {
   const [logs, setLogs] = useState<UnifiLogEntry[]>([])
   const [pendingLogs, setPendingLogs] = useState<UnifiLogEntry[]>([])
   const [doorStatusLogs, setDoorStatusLogs] = useState<DoorStatusEvent[]>([])
@@ -45,6 +58,7 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
 
   // topic drives what UniFi returns for the access tab
   const topic = 'door_openings'
+  const useExternalAccess = accessLogsOverride !== undefined
 
   const displayedLogs = logs
 
@@ -74,6 +88,12 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
       return
     }
 
+    // Access tab can use parent-provided shared dataset
+    if (useExternalAccess) {
+      if (!silent) setLoading(false)
+      return
+    }
+
     // Access tab: fetch from /api/logs
     const params = new URLSearchParams({ tenantId, pageSize: String(pageSize), topic })
     if (doorId) params.set('doorId', doorId)
@@ -96,7 +116,7 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
     } finally {
       if (!silent && myCount === fetchCountRef.current) setLoading(false)
     }
-  }, [tenantId, doorId, since, until, pageSize, topic, logFilter])
+  }, [tenantId, doorId, since, until, pageSize, topic, logFilter, useExternalAccess])
 
   const flushPending = useCallback(() => {
     setLogs((prev) => {
@@ -110,22 +130,35 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
   // Keep ref in sync when logs are replaced by full reload
   useEffect(() => { currentLogsRef.current = logs }, [logs])
 
+  // Sync access logs from parent when provided
+  useEffect(() => {
+    if (!useExternalAccess) return
+    setLogs(accessLogsOverride ?? [])
+    setPendingLogs([])
+    setLoading(accessLogsLoadingOverride)
+  }, [useExternalAccess, accessLogsOverride, accessLogsLoadingOverride])
+
   // Full reload when range/door changes
-  useEffect(() => { fetchLogs(false) }, [fetchLogs])
+  useEffect(() => {
+    if (useExternalAccess && logFilter !== 'door_status') return
+    fetchLogs(false)
+  }, [fetchLogs, useExternalAccess, logFilter])
 
   // Silent refresh when an action is taken
   const prevTrigger = useRef(refreshTrigger)
   useEffect(() => {
+    if (useExternalAccess && logFilter !== 'door_status') return
     if (refreshTrigger === prevTrigger.current) return
     prevTrigger.current = refreshTrigger
     fetchLogs(true)
-  }, [refreshTrigger, fetchLogs])
+  }, [refreshTrigger, fetchLogs, useExternalAccess, logFilter])
 
   // Periodic silent refresh every 30s
   useEffect(() => {
+    if (useExternalAccess && logFilter !== 'door_status') return
     const id = setInterval(() => fetchLogs(true), 60_000)
     return () => clearInterval(id)
-  }, [fetchLogs])
+  }, [fetchLogs, useExternalAccess, logFilter])
 
   async function handleExport() {
     setExporting(true)
@@ -263,8 +296,8 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
 
   function statusTypeStyles(statusType: DoorStatusEvent['statusType']): { bg: string; text: string; pill: string; pillText: string } {
     switch (statusType) {
-      case 'open':        return { bg: 'bg-amber-400',  text: 'text-amber-700',  pill: 'bg-amber-50',  pillText: 'text-amber-700' }
-      case 'close':       return { bg: 'bg-green-500',  text: 'text-green-700',  pill: 'bg-green-50',  pillText: 'text-green-700' }
+      case 'open':        return { bg: 'bg-red-500',    text: 'text-red-700',    pill: 'bg-red-50',    pillText: 'text-red-700' }
+      case 'close':       return { bg: 'bg-sky-500',    text: 'text-sky-700',    pill: 'bg-sky-50',    pillText: 'text-sky-700' }
       case 'unlock':      return { bg: 'bg-blue-500',   text: 'text-blue-700',   pill: 'bg-blue-50',   pillText: 'text-blue-700' }
       case 'lockdown_on': return { bg: 'bg-red-600',    text: 'text-red-700',    pill: 'bg-red-50',    pillText: 'text-red-700' }
       case 'lockdown_off':return { bg: 'bg-gray-400',   text: 'text-gray-600',   pill: 'bg-gray-50',   pillText: 'text-gray-600' }
@@ -289,7 +322,7 @@ export function ActivityLogTable({ tenantId, doorId, showExport = false, since, 
       case 'evac_off':     return 'Cleared'
       case 'schedule_on':  return 'Scheduled'
       case 'schedule_off': return 'Unscheduled'
-      case 'temp_unlock_on':  return 'Temp Unlock'
+      case 'temp_unlock_on':  return 'Started'
       case 'temp_unlock_off': return 'Ended'
       default:             return 'Event'
     }

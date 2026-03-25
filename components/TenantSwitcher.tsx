@@ -1,8 +1,8 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
 interface Tenant {
@@ -14,13 +14,20 @@ interface Props {
   tenants: Tenant[]
   currentTenantId: string
   showAdminLink?: boolean
+  labelOverride?: string
+  activeItem?: 'tenant' | 'site-manager' | 'management-portal'
 }
 
-export function TenantSwitcher({ tenants, currentTenantId, showAdminLink }: Props) {
+export function TenantSwitcher({
+  tenants,
+  currentTenantId,
+  showAdminLink,
+  labelOverride,
+  activeItem = 'tenant',
+}: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
-  const router = useRouter()
   const { data: session } = useSession()
 
   const current = tenants.find((t) => t._id === currentTenantId)
@@ -37,11 +44,6 @@ export function TenantSwitcher({ tenants, currentTenantId, showAdminLink }: Prop
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  function selectTenant(id: string) {
-    setOpen(false)
-    router.push(`/dashboard?tenantId=${id}`)
-  }
-
   return (
     <div className="relative" ref={ref}>
       {/* Trigger */}
@@ -51,7 +53,7 @@ export function TenantSwitcher({ tenants, currentTenantId, showAdminLink }: Prop
       >
         <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
         <span className="text-sm font-medium text-gray-800 max-w-[160px] truncate">
-          {current?.name ?? 'Select Site'}
+          {labelOverride ?? current?.name ?? 'Select Site'}
         </span>
         <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-gray-500 flex-shrink-0">
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
@@ -84,38 +86,77 @@ export function TenantSwitcher({ tenants, currentTenantId, showAdminLink }: Prop
               <p className="text-sm text-gray-400 text-center py-4">No sites found</p>
             ) : (
               filtered.map((t) => (
-                <button
+                <Link
                   key={t._id}
+                  href={`/dashboard?tenantId=${t._id}`}
                   className={cn(
                     'w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left',
-                    t._id === currentTenantId && 'bg-blue-50'
+                    activeItem === 'tenant' && t._id === currentTenantId && 'bg-blue-50'
                   )}
-                  onClick={() => selectTenant(t._id)}
+                  onClick={() => setOpen(false)}
                 >
                   <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
                   <span className={cn(
                     'flex-1 text-sm truncate',
-                    t._id === currentTenantId ? 'font-semibold text-[#006FFF]' : 'text-gray-700'
+                    activeItem === 'tenant' && t._id === currentTenantId ? 'font-semibold text-[#006FFF]' : 'text-gray-700'
                   )}>
                     {t.name}
                   </span>
-                </button>
+                </Link>
               ))
             )}
           </div>
 
           {/* Admin / Management link */}
+          <div className="border-t">
+            <Link
+              href="/"
+              className={cn(
+                'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors',
+                activeItem === 'site-manager' && 'bg-blue-50'
+              )}
+              onClick={() => setOpen(false)}
+            >
+              <svg
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className={cn(
+                  'w-4 h-4 flex-shrink-0',
+                  activeItem === 'site-manager' ? 'text-[#006FFF]' : 'text-gray-500'
+                )}
+              >
+                <path fillRule="evenodd" d="M10 2a1 1 0 01.707.293l7 7A1 1 0 0118 10v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4H8v4a1 1 0 01-1 1H3a1 1 0 01-1-1v-7a1 1 0 01.293-.707l7-7A1 1 0 0110 2z" clipRule="evenodd" />
+              </svg>
+              <span className={cn('text-sm font-medium', activeItem === 'site-manager' ? 'text-[#006FFF]' : 'text-gray-700')}>
+                Site Manager
+              </span>
+            </Link>
+          </div>
+
           {(showAdminLink || (session?.user as { role?: string })?.role === 'admin') && (
             <div className="border-t">
-              <button
-                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors"
-                onClick={() => { setOpen(false); router.push('/admin') }}
+              <Link
+                href="/admin"
+                className={cn(
+                  'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors',
+                  activeItem === 'management-portal' && 'bg-blue-50'
+                )}
+                onClick={() => setOpen(false)}
               >
-                <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-gray-500 flex-shrink-0">
+                <svg
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className={cn(
+                    'w-4 h-4 flex-shrink-0',
+                    activeItem === 'management-portal' ? 'text-[#006FFF]' : 'text-gray-500'
+                  )}
+                >
                   <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clipRule="evenodd" />
                 </svg>
-                <span className="text-sm font-medium text-[#006FFF]">Management Portal</span>
-              </button>
+                <span className={cn('text-sm font-medium', activeItem === 'management-portal' ? 'text-[#006FFF]' : 'text-gray-700')}>
+                  Management Portal
+                </span>
+              </Link>
             </div>
           )}
         </div>

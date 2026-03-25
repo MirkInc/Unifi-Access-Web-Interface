@@ -33,7 +33,7 @@ export function DashboardClient({
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
-  // Live status overlay — keyed by MongoDB door id
+  // Live status overlay - keyed by MongoDB door id
   type LiveStatus = { lockStatus: DoorStatus['lockStatus']; positionStatus: DoorStatus['positionStatus']; isOnline: boolean; lockRule: UnifiLockRule | null }
   const [liveStatuses, setLiveStatuses] = useState<Record<string, LiveStatus>>({})
   const doorsRef = useRef(doors)
@@ -43,34 +43,73 @@ export function DashboardClient({
   useEffect(() => {
     let es: EventSource | null = null
     let pollId: ReturnType<typeof setInterval> | null = null
+    let throttleId: ReturnType<typeof setTimeout> | null = null
+    let inFlight = false
+    let queued = false
+    let lastFetchAt = 0
+    const MIN_REFRESH_MS = 1500
 
-    async function fetchLive() {
+    async function fetchLiveNow() {
+      if (inFlight) {
+        queued = true
+        return
+      }
+      inFlight = true
       try {
         const res = await fetch(`/api/tenants/${currentTenantId}/live`)
         if (!res.ok) return
         const data: (LiveStatus & { id: string })[] = await res.json()
         setLiveStatuses(Object.fromEntries(data.map((d) => [d.id, { lockStatus: d.lockStatus, positionStatus: d.positionStatus, isOnline: d.isOnline, lockRule: d.lockRule }])))
-      } catch { /* ignore */ }
+      } catch {
+        // ignore
+      } finally {
+        inFlight = false
+        lastFetchAt = Date.now()
+        if (queued) {
+          queued = false
+          queueFetch()
+        }
+      }
     }
 
-    fetchLive() // initial load
+    function queueFetch(force = false) {
+      if (force) {
+        void fetchLiveNow()
+        return
+      }
+
+      const waitMs = Math.max(0, MIN_REFRESH_MS - (Date.now() - lastFetchAt))
+      if (waitMs === 0) {
+        void fetchLiveNow()
+        return
+      }
+
+      if (throttleId) return
+      throttleId = setTimeout(() => {
+        throttleId = null
+        void fetchLiveNow()
+      }, waitMs)
+    }
+
+    queueFetch(true) // initial load
 
     // Subscribe to SSE push for real-time door events
     es = new EventSource(`/api/tenants/${currentTenantId}/events`)
     es.addEventListener('door_update', () => {
-      // A door changed — re-fetch live statuses
-      fetchLive()
+      // Coalesce noisy event bursts from controller updates
+      queueFetch()
     })
     es.addEventListener('error', () => {
-      // SSE failed — fall back to polling every 15s
+      // SSE failed - fall back to polling every 15s
       es?.close()
       es = null
-      if (!pollId) pollId = setInterval(fetchLive, 15_000)
+      if (!pollId) pollId = setInterval(queueFetch, 15_000)
     })
 
     return () => {
       es?.close()
       if (pollId) clearInterval(pollId)
+      if (throttleId) clearTimeout(throttleId)
     }
   }, [currentTenantId])
 
@@ -118,7 +157,7 @@ export function DashboardClient({
         {/* Controller error banner */}
         {controllerError && (
           <div className="mb-4 bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-3 rounded-xl">
-            <strong>Controller Unreachable:</strong> {controllerError} — door statuses may be stale.
+            <strong>Controller Unreachable:</strong> {controllerError} - door statuses may be stale.
           </div>
         )}
 
@@ -131,20 +170,11 @@ export function DashboardClient({
             </svg>
             <input
               type="text"
-              placeholder="Search doors…"
+              placeholder="Search doors..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="outline-none text-sm bg-transparent flex-1 min-w-0 placeholder-gray-400"
             />
-          </div>
-
-          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl px-1 py-1">
-            <button className="flex items-center gap-1.5 text-sm text-gray-700 font-medium px-3 py-1 rounded-lg hover:bg-gray-50">
-              <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-gray-400">
-                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-              </svg>
-              All Locations ({counts.all})
-            </button>
           </div>
 
           {/* Status filter tabs */}

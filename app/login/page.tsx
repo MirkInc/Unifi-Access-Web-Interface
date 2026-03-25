@@ -45,7 +45,7 @@ export default function LoginPage() {
           <p className="text-sm text-gray-500 mt-1">Sign in to your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="card p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="card p-6 space-y-4" autoComplete="on">
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
               {error}
@@ -56,11 +56,13 @@ export default function LoginPage() {
             <label className="label" htmlFor="email">Email</label>
             <input
               id="email"
+              name="email"
               type="email"
               className="input"
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoComplete="username"
               required
               autoFocus
             />
@@ -73,17 +75,19 @@ export default function LoginPage() {
             </div>
             <input
               id="password"
+              name="password"
               type="password"
               className="input"
-              placeholder="••••••••"
+              placeholder="********"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
               required
             />
           </div>
 
           <button type="submit" className="btn-primary w-full" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+            {loading ? 'Signing in...' : 'Sign in'}
           </button>
         </form>
       </div>

@@ -11,9 +11,18 @@ interface Props {
   currentTenantId: string
   userName: string
   isAdmin: boolean
+  tenantLabelOverride?: string
+  activeNavItem?: 'tenant' | 'site-manager' | 'management-portal'
 }
 
-export function AppHeader({ tenants, currentTenantId, userName, isAdmin }: Props) {
+export function AppHeader({
+  tenants,
+  currentTenantId,
+  userName,
+  isAdmin,
+  tenantLabelOverride,
+  activeNavItem = 'tenant',
+}: Props) {
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   return (
@@ -26,7 +35,13 @@ export function AppHeader({ tenants, currentTenantId, userName, isAdmin }: Props
               <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
             </svg>
           </div>
-          <TenantSwitcher tenants={tenants} currentTenantId={currentTenantId} showAdminLink={isAdmin} />
+          <TenantSwitcher
+            tenants={tenants}
+            currentTenantId={currentTenantId}
+            showAdminLink={isAdmin}
+            labelOverride={tenantLabelOverride}
+            activeItem={activeNavItem}
+          />
         </div>
 
         {/* Right: user menu */}
@@ -53,7 +68,7 @@ export function AppHeader({ tenants, currentTenantId, userName, isAdmin }: Props
               <div className="border-t border-gray-100" />
               <button
                 className="w-full text-left px-4 py-2.5 text-sm text-red-500 hover:bg-red-50 transition-colors"
-                onClick={() => signOut({ callbackUrl: '/login' })}
+                onClick={() => signOut({ callbackUrl: `${window.location.origin}/login` })}
               >
                 Sign out
               </button>

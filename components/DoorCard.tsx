@@ -1,6 +1,6 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faLock, faLockOpen, faDoorOpen } from '@fortawesome/free-solid-svg-icons'
 import { KeypadIcon } from './KeypadIcon'
@@ -41,20 +41,19 @@ function ruleLabel(lockRule?: UnifiLockRule | null, timezone?: string): string |
 
 
 export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
-  const router = useRouter()
   const { text, color } = statusLabel(door)
   const rule = ruleLabel(lockRule, timezone)
   const isWarning = door.positionStatus === 'open' && door.lockStatus === 'lock' && lockRule?.type !== 'keep_lock'
   const isLockdown = lockRule?.type === 'keep_lock'
 
   return (
-    <button
+    <Link
+      href={`/door/${door.id}`}
       className={cn(
         'card hover:shadow-md transition-shadow text-left w-full p-4 flex flex-col',
         isLockdown && 'ring-2 ring-amber-500',
         isWarning && 'ring-2 ring-red-500'
       )}
-      onClick={() => router.push(`/door/${door.id}`)}
     >
       {/* Keypad illustration */}
       <div className={cn(
@@ -111,6 +110,6 @@ export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
           <FontAwesomeIcon icon={faLock} className={cn('w-4 h-4 flex-shrink-0', isLockdown ? 'text-amber-600' : 'text-gray-400')} />
         )}
       </div>
-    </button>
+    </Link>
   )
 }

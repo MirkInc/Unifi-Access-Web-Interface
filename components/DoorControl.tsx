@@ -67,6 +67,15 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
 
   const isLocked = door.lockStatus === 'lock'
   const hasActiveRule = lockRule && lockRule.type !== 'schedule'
+  const hasAnyControl =
+    permissions.canUnlock ||
+    permissions.canTempLock ||
+    permissions.canEndLockSchedule ||
+    permissions.canEndTempLock
+  const isUnauthorizedOpening =
+    door.positionStatus === 'open' &&
+    door.lockStatus === 'lock' &&
+    lockRule?.type !== 'keep_lock'
 
   // When a temp-unlock rule is active, treat the door as visually unlocked
   // even if lockStatus hasn't refreshed yet
@@ -159,10 +168,17 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
   }
 
   return (
-    <div className="card p-5 space-y-4">
+    <div className={cn('card p-5 space-y-4', isUnauthorizedOpening && 'ring-2 ring-red-500 border-red-200')}>
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">
           {error}
+        </div>
+      )}
+
+      {isUnauthorizedOpening && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <p className="text-sm font-semibold text-red-700 uppercase tracking-wide">Unauthorized Opening</p>
+          <p className="text-xs text-red-600 mt-0.5">Door is open while lock state is locked.</p>
         </div>
       )}
 
@@ -211,7 +227,7 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
       </div>
 
       {/* Action area — differs based on effective lock state */}
-      {!isEffectivelyUnlocked ? (
+      {hasAnyControl && !isEffectivelyUnlocked ? (
         /* LOCKED */
         lockRule?.type === 'keep_lock' ? (
           /* LOCKDOWN ACTIVE: only offer to end it — UniFi blocks all unlocking during lockdown */
@@ -275,7 +291,7 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
             )}
           </div>
         )
-      ) : (
+      ) : hasAnyControl ? (
         /* UNLOCKED: countdown (if rule-based) + lock action */
         <div className="flex items-center justify-between gap-4 bg-blue-50 rounded-xl px-4 py-3">
           <div>
@@ -315,6 +331,10 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
               </button>
             )
           )}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+          <p className="text-xs text-gray-500">View-only access</p>
         </div>
       )}
 
