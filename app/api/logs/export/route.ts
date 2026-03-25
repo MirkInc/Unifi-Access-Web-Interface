@@ -56,6 +56,7 @@ export async function GET(req: Request) {
   if (!tenant) return NextResponse.json({ error: 'Tenant not found' }, { status: 404 })
 
   try {
+    const timezone = tenant.timezone || 'UTC'
     function eventTime(ts?: number): string {
       if (!ts) return ''
       const d = new Date(ts * 1000)
@@ -66,7 +67,7 @@ export async function GET(req: Request) {
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,
-        timeZone: tenant.timezone || 'UTC',
+        timeZone: timezone,
         timeZoneName: 'short',
       }).formatToParts(d)
 
