@@ -54,7 +54,8 @@ export async function GET(req: Request) {
   const todayMidnightTs = Math.floor(todayMidnight.getTime() / 1000)
 
   // Resolve the door document (needed for logsCachedThrough and unifiDoorId)
-  let door: Awaited<ReturnType<typeof Door.findById>> = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let door: any = null
   let unifiActorId: string | undefined
   if (doorId) {
     door = await Door.findById(doorId)
