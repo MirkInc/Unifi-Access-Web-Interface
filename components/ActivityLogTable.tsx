@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faDoorOpen, faDoorClosed, faLock, faLockOpen, faBuildingLock, faBuilding } from '@fortawesome/free-solid-svg-icons'
 import { formatTime, getInitials, isAccessDenied } from '@/lib/utils'
 import type { UnifiLogEntry } from '@/types'
 
-type LogFilter = 'access' | 'door_status'
+type LogFilter = 'access' | 'door_status' | 'door_position'
 
 interface DoorStatusEvent {
   id: string
@@ -18,8 +20,9 @@ interface DoorStatusEvent {
 }
 
 const FILTER_LABELS: { value: LogFilter; label: string }[] = [
-  { value: 'access', label: 'Access' },
-  { value: 'door_status', label: 'Door Status' },
+  { value: 'access', label: 'Access Events' },
+  { value: 'door_position', label: 'Door Open/Close' },
+  { value: 'door_status', label: 'All' },
 ]
 
 interface Props {
@@ -66,7 +69,7 @@ export function ActivityLogTable({
     const myCount = ++fetchCountRef.current
     if (!silent) setLoading(true)
 
-    if (logFilter === 'door_status') {
+    if (logFilter === 'door_status' || logFilter === 'door_position') {
       // Fetch from webhook-events; only works when doorId is provided
       if (!doorId) {
         if (!silent) setLoading(false)
@@ -80,7 +83,11 @@ export function ActivityLogTable({
         const res = await fetch(`/api/webhook-events?${params}`, { cache: 'no-store' })
         if (res.ok && myCount === fetchCountRef.current) {
           const fresh: DoorStatusEvent[] = await res.json()
-          setDoorStatusLogs(fresh)
+          const filtered =
+            logFilter === 'door_position'
+              ? fresh.filter((evt) => evt.statusType === 'open' || evt.statusType === 'close')
+              : fresh
+          setDoorStatusLogs(filtered)
         }
       } finally {
         if (!silent && myCount === fetchCountRef.current) setLoading(false)
@@ -140,14 +147,14 @@ export function ActivityLogTable({
 
   // Full reload when range/door changes
   useEffect(() => {
-    if (useExternalAccess && logFilter !== 'door_status') return
+    if (useExternalAccess && logFilter !== 'door_status' && logFilter !== 'door_position') return
     fetchLogs(false)
   }, [fetchLogs, useExternalAccess, logFilter])
 
   // Silent refresh when an action is taken
   const prevTrigger = useRef(refreshTrigger)
   useEffect(() => {
-    if (useExternalAccess && logFilter !== 'door_status') return
+    if (useExternalAccess && logFilter !== 'door_status' && logFilter !== 'door_position') return
     if (refreshTrigger === prevTrigger.current) return
     prevTrigger.current = refreshTrigger
     fetchLogs(true)
@@ -155,7 +162,7 @@ export function ActivityLogTable({
 
   // Periodic silent refresh every 30s
   useEffect(() => {
-    if (useExternalAccess && logFilter !== 'door_status') return
+    if (useExternalAccess && logFilter !== 'door_status' && logFilter !== 'door_position') return
     const id = setInterval(() => fetchLogs(true), 60_000)
     return () => clearInterval(id)
   }, [fetchLogs, useExternalAccess, logFilter])
@@ -163,6 +170,7 @@ export function ActivityLogTable({
   async function handleExport() {
     setExporting(true)
     const params = new URLSearchParams({ tenantId })
+    params.set('filter', logFilter)
     if (doorId) params.set('doorId', doorId)
     if (since) params.set('since', String(since))
     if (until) params.set('until', String(until))
@@ -173,7 +181,13 @@ export function ActivityLogTable({
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = 'access-logs.xlsx'
+        const baseName =
+          logFilter === 'access'
+            ? 'access-events'
+            : logFilter === 'door_position'
+            ? 'door-open-close'
+            : 'door-status-all'
+        a.download = `${baseName}.xlsx`
         a.click()
         URL.revokeObjectURL(url)
       }
@@ -328,6 +342,30 @@ export function ActivityLogTable({
     }
   }
 
+  function statusTypeIcon(statusType: DoorStatusEvent['statusType']) {
+    switch (statusType) {
+      case 'open':
+        return faDoorOpen
+      case 'lockdown_on':
+        return faBuildingLock
+      case 'lockdown_off':
+        return faBuilding
+      case 'close':
+        return faDoorClosed
+      case 'temp_unlock_off':
+        return faLock
+      case 'unlock':
+      case 'evac_on':
+      case 'evac_off':
+      case 'schedule_on':
+      case 'schedule_off':
+      case 'temp_unlock_on':
+        return faLockOpen
+      default:
+        return faLock
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between gap-3 mb-3">
@@ -348,9 +386,9 @@ export function ActivityLogTable({
           ))}
         </div>
 
-        {/* Export — hidden on door_status tab */}
-        {showExport && logFilter !== 'door_status' && (
-          <button className="btn-secondary flex items-center gap-2 text-xs" onClick={handleExport} disabled={exporting}>
+        {/* Export */}
+        {showExport && (
+          <button className="btn-secondary flex items-center gap-2 text-xs" onClick={handleExport} disabled={exporting || ((logFilter === 'door_status' || logFilter === 'door_position') && !doorId)}>
             <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
               <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
@@ -370,7 +408,7 @@ export function ActivityLogTable({
 
       {loading ? (
         <div className="text-center text-gray-400 text-sm py-8">Loading…</div>
-      ) : logFilter === 'door_status' ? (
+      ) : logFilter === 'door_status' || logFilter === 'door_position' ? (
         /* ---- Door Status tab ---- */
         !doorId ? (
           <p className="text-sm text-gray-400 text-center py-8">Select a specific door to view door status events.</p>
@@ -397,9 +435,7 @@ export function ActivityLogTable({
 
                           {/* Status icon circle */}
                           <span className={`w-7 h-7 rounded-full ${styles.bg} flex items-center justify-center flex-shrink-0`}>
-                            <svg viewBox="0 0 20 20" fill="white" className="w-3.5 h-3.5">
-                              <circle cx="10" cy="10" r="4" />
-                            </svg>
+                            <FontAwesomeIcon icon={statusTypeIcon(evt.statusType)} className="w-3.5 h-3.5 text-white" />
                           </span>
 
                           {/* Label + sublabel */}
@@ -494,3 +530,4 @@ export function ActivityLogTable({
     </div>
   )
 }
+

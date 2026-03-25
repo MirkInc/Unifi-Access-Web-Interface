@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
+import type { Metadata } from 'next'
 import { cookies } from 'next/headers'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
@@ -14,6 +15,17 @@ import type { DoorStatus, UnifiDoor } from '@/types'
 
 interface PageProps {
   searchParams: { tenantId?: string }
+}
+
+export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+  await connectDB()
+  const cookieStore = cookies()
+  const selectedTenantId = searchParams?.tenantId ?? cookieStore.get('selectedTenant')?.value
+  if (!selectedTenantId) return { title: 'Console' }
+
+  const tenant = await Tenant.findById(selectedTenantId).select('name').lean()
+  if (!tenant) return { title: 'Console' }
+  return { title: tenant.name }
 }
 
 export default async function DashboardPage({ searchParams }: PageProps) {

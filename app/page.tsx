@@ -1,4 +1,7 @@
 export const dynamic = 'force-dynamic'
+export const metadata = {
+  title: 'Site Manager',
+}
 
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'

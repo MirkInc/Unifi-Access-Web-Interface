@@ -2,11 +2,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import type { Metadata } from 'next'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { TenantSwitcher } from '@/components/TenantSwitcher'
 import { AdminNav } from './AdminNav'
 import { AdminUserMenu } from './AdminUserMenu'
+
+export const metadata: Metadata = {
+  title: 'Admin',
+}
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions)
@@ -38,7 +43,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               tenants={tenantList}
               currentTenantId={currentTenantId}
               showAdminLink
-              labelOverride="Management Portal"
+              labelOverride="Admin"
               activeItem="management-portal"
             />
 

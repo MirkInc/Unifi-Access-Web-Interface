@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
-import Link from 'next/link'
+import type { Metadata } from 'next'
 import { connectDB } from '@/lib/mongodb'
 import Door from '@/models/Door'
 import Tenant from '@/models/Tenant'
@@ -15,6 +15,16 @@ import type { DoorStatus } from '@/types'
 
 interface PageProps {
   params: { doorId: string }
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  await connectDB()
+  const door = await Door.findById(params.doorId).select('name tenantId').lean()
+  if (!door) return { title: 'Console | Door' }
+
+  const tenant = await Tenant.findById(door.tenantId).select('name').lean()
+  if (!tenant) return { title: `Console | ${door.name}` }
+  return { title: `${tenant.name} | ${door.name}` }
 }
 
 export default async function DoorDetailPage({ params }: PageProps) {

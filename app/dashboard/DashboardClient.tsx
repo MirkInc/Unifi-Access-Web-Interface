@@ -203,7 +203,7 @@ export function DashboardClient({
               <path d="M8 40V10a2 2 0 012-2h20l10 10v22a2 2 0 01-2 2H10a2 2 0 01-2-2z" stroke="currentColor" strokeWidth="2" />
             </svg>
             {liveDoors.length === 0 ? (
-              <p>No doors synced yet. Sync doors from the Management Portal.</p>
+              <p>No doors synced yet. Sync doors from Admin.</p>
             ) : (
               <p>No doors match your filters.</p>
             )}
