@@ -40,22 +40,25 @@ export async function writeAudit(input: WriteAuditInput) {
     metadata = {},
   } = input
 
-  await SystemAudit.create({
-
-    tenantId: tenantId || null,
-    doorId: doorId || null,
-    actorUserId: actorUserId || null,
-    actorName: actorName || 'Unknown User',
-    actorEmail: actorEmail || '',
-    actorRole: actorRole || '',
-    action,
-    entityType,
-    entityId: entityId || '',
-    outcome,
-    message,
-    ip: clientIp(req),
-    userAgent: req?.headers.get('user-agent') ?? '',
-    metadata,
-  })
+  try {
+    await SystemAudit.create({
+      tenantId: tenantId || null,
+      doorId: doorId || null,
+      actorUserId: actorUserId || null,
+      actorName: actorName || 'Unknown User',
+      actorEmail: actorEmail || '',
+      actorRole: actorRole || '',
+      action,
+      entityType,
+      entityId: entityId || '',
+      outcome,
+      message,
+      ip: clientIp(req),
+      userAgent: req?.headers.get('user-agent') ?? '',
+      metadata,
+    })
+  } catch (err) {
+    console.error('[audit] writeAudit failed (best-effort):', (err as Error).message)
+  }
 }
 
