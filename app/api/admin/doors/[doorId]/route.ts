@@ -6,6 +6,7 @@ import Door from '@/models/Door'
 import Tenant from '@/models/Tenant'
 import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
+import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ doorId: string }> }
 
@@ -131,6 +132,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const { doorId } = await params
   const body = await req.json()
@@ -144,6 +146,26 @@ export async function PUT(req: Request, { params }: Params) {
   if ('firstPersonInRequired' in body) door.firstPersonInRequired = body.firstPersonInRequired === true
 
   await door.save()
+
+  await writeAudit({
+    req,
+    tenantId: door.tenantId.toString(),
+    doorId: door._id.toString(),
+    actorUserId: sessionUser.id,
+    actorName: sessionUser.name ?? 'Admin',
+    actorEmail: sessionUser.email,
+    actorRole: sessionUser.role,
+    action: 'door.admin_settings.update',
+    entityType: 'door',
+    entityId: door._id.toString(),
+    outcome: 'success',
+    message: `Updated admin settings for ${door.name}`,
+    metadata: {
+      scheduleId: door.scheduleId ?? null,
+      scheduleName: door.scheduleName ?? null,
+      firstPersonInRequired: door.firstPersonInRequired === true,
+    },
+  })
 
   return NextResponse.json({
     scheduleId: door.scheduleId,

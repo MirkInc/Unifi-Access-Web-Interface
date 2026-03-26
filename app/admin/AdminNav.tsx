@@ -10,6 +10,7 @@ const links = [
   { href: '/admin/schedules', label: 'Schedules' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/logs', label: 'Activity Logs' },
+  { href: '/admin/audit', label: 'Audit Logs' },
 ]
 
 export function AdminNav() {

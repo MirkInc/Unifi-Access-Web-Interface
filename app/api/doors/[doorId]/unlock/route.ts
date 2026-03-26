@@ -7,6 +7,7 @@ import Tenant from '@/models/Tenant'
 import User from '@/models/User'
 import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
+import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ doorId: string }> }
 
@@ -19,7 +20,7 @@ export async function POST(req: Request, { params }: Params) {
   const door = await Door.findById(doorId)
   if (!door) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const sessionUser = session.user as { id: string; role: string; name?: string }
+  const sessionUser = session.user as { id: string; role: string; name?: string; email?: string }
 
   // Check permission
   if (sessionUser.role !== 'admin') {
@@ -75,8 +76,45 @@ export async function POST(req: Request, { params }: Params) {
       },
     }).catch((err) => console.error('[portal-log] unlock audit write failed:', err))
 
+    await writeAudit({
+      req,
+      tenantId: door.tenantId.toString(),
+      doorId: door._id.toString(),
+      actorUserId: sessionUser.id,
+      actorName: sessionUser.name ?? 'Portal User',
+      actorEmail: sessionUser.email,
+      actorRole: sessionUser.role,
+      action: 'door.unlock',
+      entityType: 'door',
+      entityId: door._id.toString(),
+      outcome: 'success',
+      message: `Unlocked ${door.name}`,
+      metadata: {
+        unifiDoorId: door.unifiDoorId,
+        doorName: door.name,
+      },
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
+    await writeAudit({
+      req,
+      tenantId: door.tenantId.toString(),
+      doorId: door._id.toString(),
+      actorUserId: sessionUser.id,
+      actorName: sessionUser.name ?? 'Portal User',
+      actorEmail: sessionUser.email,
+      actorRole: sessionUser.role,
+      action: 'door.unlock',
+      entityType: 'door',
+      entityId: door._id.toString(),
+      outcome: 'failure',
+      message: (err as Error).message,
+      metadata: {
+        unifiDoorId: door.unifiDoorId,
+        doorName: door.name,
+      },
+    }).catch(() => undefined)
     return NextResponse.json(
       { error: `Controller error: ${(err as Error).message}` },
       { status: 502 }
