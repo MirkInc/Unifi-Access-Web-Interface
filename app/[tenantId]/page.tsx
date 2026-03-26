@@ -2,8 +2,9 @@ export const dynamic = 'force-dynamic'
 
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { redirect } from 'next/navigation'
+import { redirect, notFound } from 'next/navigation'
 import type { Metadata } from 'next'
+import { isValidObjectId } from 'mongoose'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import Tenant from '@/models/Tenant'
@@ -18,6 +19,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { tenantId } = await params
+  if (!isValidObjectId(tenantId)) return { title: 'Console' }
   await connectDB()
   const tenant = await Tenant.findById(tenantId).select('name').lean()
   if (!tenant) return { title: 'Console' }
@@ -26,6 +28,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function TenantDashboardPage({ params }: PageProps) {
   const { tenantId } = await params
+  if (!isValidObjectId(tenantId)) notFound()
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
@@ -137,4 +140,3 @@ export default async function TenantDashboardPage({ params }: PageProps) {
     />
   )
 }
-

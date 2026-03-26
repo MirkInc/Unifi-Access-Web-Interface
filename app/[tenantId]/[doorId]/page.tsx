@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect, notFound } from 'next/navigation'
 import type { Metadata } from 'next'
+import { isValidObjectId } from 'mongoose'
 import { connectDB } from '@/lib/mongodb'
 import Door from '@/models/Door'
 import Tenant from '@/models/Tenant'
@@ -19,6 +20,7 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { tenantId, doorId } = await params
+  if (!isValidObjectId(tenantId) || !isValidObjectId(doorId)) return { title: 'Console | Door' }
   await connectDB()
   const door = await Door.findOne({ _id: doorId, tenantId }).select('name tenantId').lean()
   if (!door) return { title: 'Console | Door' }
@@ -30,6 +32,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function TenantDoorDetailPage({ params }: PageProps) {
   const { tenantId, doorId } = await params
+  if (!isValidObjectId(tenantId) || !isValidObjectId(doorId)) notFound()
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect('/login')
 
@@ -46,12 +49,13 @@ export default async function TenantDoorDetailPage({ params }: PageProps) {
     canTempLock: false,
     canEndTempLock: false,
     canViewLogs: false,
+    canViewAnalytics: false,
   }
 
   if (sessionUser.role === 'admin') {
     permissions = {
       canUnlock: true, canEndLockSchedule: true,
-      canTempLock: true, canEndTempLock: true, canViewLogs: true,
+      canTempLock: true, canEndTempLock: true, canViewLogs: true, canViewAnalytics: true,
     }
   } else {
     const user = await User.findById(sessionUser.id).lean()
@@ -64,6 +68,7 @@ export default async function TenantDoorDetailPage({ params }: PageProps) {
       canTempLock: dp.canTempLock,
       canEndTempLock: dp.canEndTempLock,
       canViewLogs: dp.canViewLogs,
+      canViewAnalytics: dp.canViewAnalytics === true,
     }
   }
 
@@ -133,10 +138,10 @@ export default async function TenantDoorDetailPage({ params }: PageProps) {
         timezone={tenant.timezone || undefined}
         doorName={door.name}
         backHref={`/${tenantId}`}
+        analyticsHref={`/${tenantId}/${doorId}/analytics`}
         scheduleId={door.scheduleId ?? undefined}
         scheduleName={door.scheduleName ?? undefined}
       />
     </div>
   )
 }
-

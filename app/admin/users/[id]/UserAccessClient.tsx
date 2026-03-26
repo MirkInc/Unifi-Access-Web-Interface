@@ -16,6 +16,7 @@ type DoorPerms = {
   canTempLock: boolean
   canEndTempLock: boolean
   canViewLogs: boolean
+  canViewAnalytics: boolean
 }
 
 const PERM_LABELS: { key: keyof DoorPerms; label: string; desc: string }[] = [
@@ -24,11 +25,12 @@ const PERM_LABELS: { key: keyof DoorPerms; label: string; desc: string }[] = [
   { key: 'canTempLock', label: 'Lockdown / Timed Unlock', desc: 'Initiate lockdown or set a timed unlock' },
   { key: 'canEndTempLock', label: 'End Lockdown / Rule', desc: 'Cancel an active lockdown or timed rule' },
   { key: 'canViewLogs', label: 'View Logs', desc: 'View and export activity logs' },
+  { key: 'canViewAnalytics', label: 'Analytics', desc: 'View door analytics page and analytics data' },
 ]
 
 const DEFAULT_PERMS: DoorPerms = {
   canUnlock: false, canEndLockSchedule: false,
-  canTempLock: false, canEndTempLock: false, canViewLogs: false,
+  canTempLock: false, canEndTempLock: false, canViewLogs: false, canViewAnalytics: false,
 }
 
 interface Props {

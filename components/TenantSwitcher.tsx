@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 
@@ -28,7 +27,6 @@ export function TenantSwitcher({
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
-  const { data: session } = useSession()
 
   const current = tenants.find((t) => t._id === currentTenantId)
   const filtered = tenants.filter((t) =>
@@ -133,7 +131,7 @@ export function TenantSwitcher({
             </Link>
           </div>
 
-          {(showAdminLink || (session?.user as { role?: string })?.role === 'admin') && (
+          {showAdminLink && (
             <div className="border-t">
               <Link
                 href="/admin"

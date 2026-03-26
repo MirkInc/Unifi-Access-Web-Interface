@@ -19,6 +19,7 @@ interface Props {
     canTempLock: boolean
     canEndTempLock: boolean
     canViewLogs: boolean
+    canViewAnalytics: boolean
   }
   controllerError: string | null
   timezone?: string
@@ -26,6 +27,7 @@ interface Props {
   backHref: string
   scheduleId?: string
   scheduleName?: string
+  analyticsHref?: string
 }
 
 const QUICK_RANGES: { label: string; value: RangeType }[] = [
@@ -95,7 +97,7 @@ function useSessionBoolean(key: string, defaultValue: boolean) {
   return [value, setValue] as const
 }
 
-export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref, scheduleId, scheduleName }: Props) {
+export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref, scheduleId, scheduleName, analyticsHref }: Props) {
   const [door, setDoor] = useState(initialDoor)
   const [refreshKey, setRefreshKey] = useState(0)
   const controlRef = useRef<HTMLDivElement>(null)
@@ -292,6 +294,19 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
               {isUnlocked ? 'Unlocked' : 'Locked'}
             </span>
           )}
+          <div className="ml-auto flex items-center gap-2">
+            {permissions.canViewAnalytics && analyticsHref && (
+              <Link
+                href={analyticsHref}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#006FFF] text-white text-xs font-semibold px-3 py-1.5 shadow-sm hover:bg-[#0057cc] focus:outline-none focus:ring-2 focus:ring-[#006FFF]/30 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path d="M3 4.75A1.75 1.75 0 0 1 4.75 3h10.5A1.75 1.75 0 0 1 17 4.75v10.5A1.75 1.75 0 0 1 15.25 17H4.75A1.75 1.75 0 0 1 3 15.25V4.75ZM6 13.25a.75.75 0 1 0 1.5 0V11a.75.75 0 0 0-1.5 0v2.25Zm3.25 0a.75.75 0 1 0 1.5 0V8.75a.75.75 0 0 0-1.5 0v4.5Zm3.25 0a.75.75 0 1 0 1.5 0V6.5a.75.75 0 0 0-1.5 0v6.75Z" />
+                </svg>
+                Analytics
+              </Link>
+            )}
+          </div>
         </div>
       </div>
 

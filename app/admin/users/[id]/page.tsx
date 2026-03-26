@@ -35,6 +35,7 @@ export default async function UserAccessPage({ params }: PageProps) {
     canTempLock: boolean
     canEndTempLock: boolean
     canViewLogs: boolean
+    canViewAnalytics: boolean
   }>> = {}
 
   for (const ta of user.tenantAccess) {
@@ -47,6 +48,7 @@ export default async function UserAccessPage({ params }: PageProps) {
         canTempLock: dp.canTempLock,
         canEndTempLock: dp.canEndTempLock,
         canViewLogs: dp.canViewLogs,
+        canViewAnalytics: dp.canViewAnalytics === true,
       }
     }
   }

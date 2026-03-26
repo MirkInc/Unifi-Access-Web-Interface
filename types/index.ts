@@ -28,6 +28,7 @@ export interface DoorPermission {
   canTempLock: boolean
   canEndTempLock: boolean
   canViewLogs: boolean
+  canViewAnalytics: boolean
 }
 
 // Tenant access entry on a user
@@ -139,4 +140,64 @@ export interface DoorStatus {
   isOnline: boolean
   lockRule?: UnifiLockRule | null
   firstPersonInRequired?: boolean
+}
+
+export interface AnalyticsKpi {
+  total: number
+  granted: number
+  denied: number
+  denialRate: number
+}
+
+export interface DoorAnalyticsRow {
+  doorId: string
+  doorName: string
+  total: number
+  granted: number
+  denied: number
+  denialRate: number
+}
+
+export interface SeriesPoint {
+  key: string
+  total: number
+  denied: number
+  denialRate: number
+}
+
+export interface MethodMixEntry {
+  method: string
+  count: number
+}
+
+export interface AnomalyEntry {
+  doorId: string
+  doorName: string
+  type: 'daily' | 'hourly'
+  bucket: string
+  severity: 'medium' | 'high'
+  total: number
+  denied: number
+  denialRate: number
+  baselineRate: number
+  baselineVolume: number
+  reason: string
+}
+
+export interface AnalyticsOverview {
+  kpi: AnalyticsKpi
+  openCloseKpi: { opened: number; closed: number; unlockedSeconds: number; unauthorizedOpenSeconds: number }
+  analyticsPreferences: {
+    hideUnlockedTime: boolean
+    hideUnauthorizedOpenTime: boolean
+  }
+  busiestDoors: DoorAnalyticsRow[]
+  denialByDay: SeriesPoint[]
+  denialByHour: SeriesPoint[]
+  openCloseByDay: Array<{ key: string; opened: number; closed: number }>
+  openCloseByHour: Array<{ key: string; opened: number; closed: number }>
+  unlockedByDay: Array<{ key: string; unlockedSeconds: number }>
+  unauthorizedOpenByDay: Array<{ key: string; unauthorizedOpenSeconds: number }>
+  methodMix: MethodMixEntry[]
+  anomalies: AnomalyEntry[]
 }
