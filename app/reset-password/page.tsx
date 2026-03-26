@@ -2,6 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Eye, EyeOff } from 'lucide-react'
 
 function ResetPasswordForm() {
   const router = useRouter()
@@ -12,6 +13,8 @@ function ResetPasswordForm() {
   const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -79,11 +82,31 @@ function ResetPasswordForm() {
           {error && <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>}
           <div>
             <label className="label">New Password</label>
-            <input type="password" className="input" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Minimum 8 characters" />
+            <div className="relative">
+              <input type={showPassword ? 'text' : 'password'} className="input pr-10" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={8} placeholder="Minimum 8 characters" />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           <div>
             <label className="label">Confirm Password</label>
-            <input type="password" className="input" value={confirm} onChange={(e) => setConfirm(e.target.value)} required placeholder="Re-enter password" />
+            <div className="relative">
+              <input type={showConfirm ? 'text' : 'password'} className="input pr-10" value={confirm} onChange={(e) => setConfirm(e.target.value)} required placeholder="Re-enter password" />
+              <button
+                type="button"
+                onClick={() => setShowConfirm((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
+                aria-label={showConfirm ? 'Hide confirm password' : 'Show confirm password'}
+              >
+                {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
           <button type="submit" className="btn-primary w-full" disabled={loading}>
             {loading ? 'Saving…' : 'Set Password'}
