@@ -10,6 +10,13 @@ export interface ITenant extends Document {
   webhookId: string | null
   webhookSecret: string | null
   webhookBaseUrl: string | null
+  webhookConfigs?: Array<{
+    id: string
+    secret: string
+    baseUrl: string
+    endpoint: string
+    createdAt: Date
+  }>
   analyticsPrefs?: {
     hideUnlockedTime: boolean
     hideUnauthorizedOpenTime: boolean
@@ -29,6 +36,18 @@ const TenantSchema = new Schema<ITenant>(
     webhookId: { type: String, default: null },
     webhookSecret: { type: String, default: null },
     webhookBaseUrl: { type: String, default: null },
+    webhookConfigs: {
+      type: [
+        {
+          id: { type: String, required: true },
+          secret: { type: String, required: true },
+          baseUrl: { type: String, required: true },
+          endpoint: { type: String, required: true },
+          createdAt: { type: Date, default: Date.now },
+        },
+      ],
+      default: [],
+    },
     analyticsPrefs: {
       hideUnlockedTime: { type: Boolean, default: true },
       hideUnauthorizedOpenTime: { type: Boolean, default: true },

@@ -1,6 +1,7 @@
 import Door from '@/models/Door'
 import Tenant from '@/models/Tenant'
 import WebhookDeliveryMetric from '@/models/WebhookDeliveryMetric'
+import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
 import { localTodayMidnight } from '@/lib/logCache'
 
@@ -60,8 +61,10 @@ export interface HealthOverviewResponse {
   rows: TenantHealthRow[]
 }
 
-const WEBHOOK_WARN_SECONDS = 10 * 60
-const WEBHOOK_CRITICAL_SECONDS = 30 * 60
+// Webhook activity can be sparse for some sites (overnights/weekends), so
+// use longer recency thresholds to avoid noisy warning states.
+const WEBHOOK_WARN_SECONDS = 6 * 60 * 60
+const WEBHOOK_CRITICAL_SECONDS = 24 * 60 * 60
 const SYNC_WARN_SECONDS = 24 * 3600
 const SYNC_CRITICAL_SECONDS = 72 * 3600
 
@@ -87,6 +90,7 @@ async function buildTenantHealthRow(
     unifiHost: string
     unifiApiKey: string
     webhookId?: string | null
+    webhookConfigs?: Array<{ id?: string }>
     lastDoorSync?: Date | null
   },
   now: Date,
@@ -137,19 +141,44 @@ async function buildTenantHealthRow(
     if (r.lastSuccessAt && (!lastSuccessAt || r.lastSuccessAt > lastSuccessAt)) lastSuccessAt = r.lastSuccessAt
     if (r.lastFailureAt && (!lastFailureAt || r.lastFailureAt > lastFailureAt)) lastFailureAt = r.lastFailureAt
   }
+
+  // Canonical success signal comes from persisted webhook events in the same window.
+  // This keeps health accurate even if delivery counters were not available historically.
+  const [eventSuccessCount, lastSuccessEvent] = await Promise.all([
+    WebhookEvent.countDocuments({
+      tenantId,
+      timestamp: { $gte: windowStart },
+      event: /^access\./,
+    }),
+    WebhookEvent.findOne({
+      tenantId,
+      timestamp: { $gte: windowStart },
+      event: /^access\./,
+    })
+      .select('timestamp')
+      .sort({ timestamp: -1 })
+      .lean(),
+  ])
+
+  successCount = eventSuccessCount
+  if (lastSuccessEvent?.timestamp && (!lastSuccessAt || lastSuccessEvent.timestamp > lastSuccessAt)) {
+    lastSuccessAt = lastSuccessEvent.timestamp
+  }
+
   const failureCount = signatureFailCount + parseFailCount
   const totalWebhookEvents = successCount + failureCount
   const successRatio = totalWebhookEvents > 0 ? successCount / totalWebhookEvents : 0
   const lastSuccessAge = ageSeconds(lastSuccessAt, nowMs)
 
   let webhookSeverity: HealthSeverity = 'good'
-  if (!tenant.webhookId) webhookSeverity = 'critical'
+  const hasWebhookConfig = !!tenant.webhookId || ((tenant.webhookConfigs?.length ?? 0) > 0)
+  if (!hasWebhookConfig) webhookSeverity = 'critical'
   else if (lastSuccessAge === null || lastSuccessAge > WEBHOOK_CRITICAL_SECONDS) webhookSeverity = 'critical'
   else if (lastSuccessAge > WEBHOOK_WARN_SECONDS) webhookSeverity = 'warn'
 
   const webhook: WebhookHealthSnapshot = {
     severity: webhookSeverity,
-    configured: !!tenant.webhookId,
+    configured: hasWebhookConfig,
     successCount,
     failureCount,
     signatureFailCount,
@@ -223,7 +252,7 @@ export async function getHealthOverview(opts: {
   const query = opts.tenantId ? { _id: opts.tenantId } : {}
 
   const tenants = await Tenant.find(query)
-    .select('name timezone unifiHost unifiApiKey webhookId lastDoorSync')
+    .select('name timezone unifiHost unifiApiKey webhookId webhookConfigs lastDoorSync')
     .sort({ name: 1 })
     .lean()
 
@@ -244,4 +273,3 @@ export async function getHealthOverview(opts: {
     rows,
   }
 }
-

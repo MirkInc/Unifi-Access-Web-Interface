@@ -11,6 +11,16 @@ export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ tenantId: string }> }
 
+function safeCompareHex(aHex: string, bHex: string): boolean {
+  const normalizedA = aHex.trim().toLowerCase()
+  const normalizedB = bHex.trim().toLowerCase()
+  const hex64 = /^[a-f0-9]{64}$/
+  if (!hex64.test(normalizedA) || !hex64.test(normalizedB)) return false
+  const a = Buffer.from(normalizedA, 'hex')
+  const b = Buffer.from(normalizedB, 'hex')
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 function getPayloadActor(payload: Record<string, unknown>): { id?: string; name?: string } | null {
   const data = payload.data as Record<string, unknown> | undefined
   const actor = data?.actor as Record<string, unknown> | undefined
@@ -146,7 +156,6 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
       : payload
 
     await WebhookEvent.create({ tenantId, unifiDoorId, event, timestamp, payload: enrichedPayload })
-    void recordWebhookDeliveryMetric(tenantId, 'success', timestamp)
   } catch (err) {
     console.error('[webhook] processWebhookEvent error:', (err as Error).message)
   }
@@ -157,12 +166,28 @@ export async function POST(req: Request, { params }: Params) {
   const rawBody = await req.text()
 
   await connectDB()
-  const tenant = await Tenant.findById(tenantId).select('webhookSecret').lean()
-  if (!tenant || !tenant.webhookSecret) {
+  const tenant = await Tenant.findById(tenantId).select('webhookSecret webhookConfigs').lean()
+  const configuredSecrets = [
+    ...(tenant?.webhookSecret ? [tenant.webhookSecret] : []),
+    ...(
+      Array.isArray((tenant as { webhookConfigs?: Array<{ secret?: string }> } | null)?.webhookConfigs)
+        ? (((tenant as { webhookConfigs?: Array<{ secret?: string }> }).webhookConfigs ?? [])
+            .map((w) => w.secret)
+            .filter((s): s is string => typeof s === 'string' && s.length > 0))
+        : []
+    ),
+  ]
+  const uniqueSecrets = Array.from(new Set(configuredSecrets))
+  if (!tenant || uniqueSecrets.length === 0) {
     return new Response('Not found', { status: 404 })
   }
 
-  const sigHeader = req.headers.get('Signature') ?? req.headers.get('x-signature') ?? ''
+  const sigHeader =
+    req.headers.get('Signature') ??
+    req.headers.get('x-signature') ??
+    req.headers.get('x-unifi-signature') ??
+    req.headers.get('x-ubnt-signature') ??
+    ''
   const parts: Record<string, string> = {}
   for (const part of sigHeader.split(/,\s*/)) {
     const eq = part.indexOf('=')
@@ -170,25 +195,44 @@ export async function POST(req: Request, { params }: Params) {
   }
   const t = parts.t
   const v1 = parts.v1
-  if (!t || !v1) {
-    void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
-    return new Response('Invalid signature', { status: 401 })
+  const hasStructuredSig = !!t && !!v1
+  const hasAnySigHeader = sigHeader.trim().length > 0
+
+  let signatureOk = false
+  if (hasStructuredSig) {
+    for (const secret of uniqueSecrets) {
+      const expected = crypto
+        .createHmac('sha256', secret)
+        .update(t as string)
+        .update('.')
+        .update(rawBody)
+        .digest('hex')
+      if (safeCompareHex(expected, v1 as string)) {
+        signatureOk = true
+        break
+      }
+    }
+  } else if (hasAnySigHeader) {
+    // Backward-compatible support for raw-signature headers from older controller variants.
+    const rawCandidate =
+      sigHeader.match(/[a-fA-F0-9]{64}/)?.[0] ??
+      sigHeader.split(',')[0]?.trim() ??
+      ''
+    for (const secret of uniqueSecrets) {
+      const expectedRaw = crypto
+        .createHmac('sha256', secret)
+        .update(rawBody)
+        .digest('hex')
+      if (safeCompareHex(expectedRaw, rawCandidate)) {
+        signatureOk = true
+        break
+      }
+    }
   }
 
-  const expected = crypto
-    .createHmac('sha256', tenant.webhookSecret)
-    .update(t)
-    .update('.')
-    .update(rawBody)
-    .digest('hex')
-
-  const expectedBuf = Buffer.from(expected, 'hex')
-  const receivedBuf = Buffer.from(v1, 'hex')
-  if (
-    expectedBuf.length !== receivedBuf.length ||
-    !crypto.timingSafeEqual(expectedBuf, receivedBuf)
-  ) {
-    void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
+  if (!signatureOk) {
+    // Ignore unsigned internet noise; count only genuine signed validation failures.
+    if (hasAnySigHeader) void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
     return new Response('Invalid signature', { status: 401 })
   }
 
@@ -200,7 +244,9 @@ export async function POST(req: Request, { params }: Params) {
     return new Response('Invalid payload', { status: 400 })
   }
 
+  // Delivery succeeded at transport/auth level; process asynchronously after acking.
+  void recordWebhookDeliveryMetric(tenantId, 'success')
+
   void processWebhookEvent(tenantId, payload)
   return new Response('OK', { status: 200 })
 }
-
