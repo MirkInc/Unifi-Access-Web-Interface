@@ -97,11 +97,13 @@ export default async function DoorDetailPage({ params }: PageProps) {
     lockStatus: null,
     positionStatus: null,
     isOnline: false,
+    firstPersonInRequired: door.firstPersonInRequired === true,
   }
   let controllerError: string | null = null
 
+  const client = clientForTenant(tenant)
+
   try {
-    const client = clientForTenant(tenant)
     const [liveDoors, lockRule] = await Promise.all([
       client.getDoors(),
       client.getLockRule(door.unifiDoorId),
@@ -119,7 +121,6 @@ export default async function DoorDetailPage({ params }: PageProps) {
   } catch (err) {
     controllerError = (err as Error).message
   }
-
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader
@@ -137,7 +138,10 @@ export default async function DoorDetailPage({ params }: PageProps) {
         timezone={tenant.timezone || undefined}
         doorName={door.name}
         backHref={`/dashboard?tenantId=${tenantId}`}
+        scheduleId={door.scheduleId ?? undefined}
+        scheduleName={door.scheduleName ?? undefined}
       />
     </div>
   )
 }
+

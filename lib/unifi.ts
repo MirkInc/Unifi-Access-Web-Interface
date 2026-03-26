@@ -1,6 +1,6 @@
 import https from 'https'
 import http from 'http'
-import type { UnifiDoor, UnifiLockRule, UnifiLogEntry } from '@/types'
+import type { UnifiDoor, UnifiLockRule, UnifiLogEntry, UnifiSchedule } from '@/types'
 
 // UniFi Access API client
 // Uses Node's http/https modules directly so we can set rejectUnauthorized: false
@@ -57,6 +57,14 @@ export class UnifiClient {
 
   async getDoors(): Promise<UnifiDoor[]> {
     return this.request<UnifiDoor[]>('/api/v1/developer/doors')
+  }
+
+  async getDoor(doorId: string): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.request<Record<string, unknown>>(`/api/v1/developer/doors/${doorId}`)
+    } catch {
+      return null
+    }
   }
 
   async getLockRule(doorId: string): Promise<UnifiLockRule | null> {
@@ -170,6 +178,30 @@ export class UnifiClient {
 
     return parseHits(allHits.slice(0, pageSize))
   }
+
+  async getSchedules(): Promise<UnifiSchedule[]> {
+    try {
+      const list = await this.request<{ id: string }[]>('/api/v1/developer/access_policies/schedules')
+      if (!list.length) return []
+      const full = await Promise.all(
+        list.map((s) =>
+          this.request<UnifiSchedule>(`/api/v1/developer/access_policies/schedules/${s.id}`).catch(() => null)
+        )
+      )
+      return full.filter((s): s is UnifiSchedule => s !== null && !!s.weekly)
+    } catch {
+      return []
+    }
+  }
+
+  async getSchedule(scheduleId: string): Promise<UnifiSchedule | null> {
+    try {
+      return await this.request<UnifiSchedule>(`/api/v1/developer/access_policies/schedules/${scheduleId}`)
+    } catch {
+      return null
+    }
+  }
+
 
   async listWebhooks(): Promise<any[]> {
     return this.request<any[]>('/api/v1/developer/webhooks/endpoints')

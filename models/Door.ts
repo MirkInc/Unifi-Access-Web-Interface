@@ -11,6 +11,9 @@ export interface IDoor extends Document {
   lastSeen: Date
   logsCachedThrough: Date | null  // UTC datetime; all past days (in tenant TZ) are cached up to this point
   oldestLogAt: Date | null        // timestamp of the oldest known access event for this door
+  scheduleId: string | null       // UniFi schedule UUID assigned to this door
+  scheduleName: string | null     // cached name for display
+  firstPersonInRequired: boolean  // local admin-configured first-person-in requirement flag
   createdAt: Date
   updatedAt: Date
 }
@@ -27,6 +30,9 @@ const DoorSchema = new Schema<IDoor>(
     lastSeen: { type: Date, default: Date.now },
     logsCachedThrough: { type: Date, default: null },
     oldestLogAt: { type: Date, default: null },
+    scheduleId: { type: String, default: null },
+    scheduleName: { type: String, default: null },
+    firstPersonInRequired: { type: Boolean, default: false },
   },
   { timestamps: true }
 )

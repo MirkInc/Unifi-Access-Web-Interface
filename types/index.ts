@@ -77,6 +77,45 @@ export interface UnifiLogEntry {
   }
 }
 
+// UniFi Access schedule types
+export interface UnifiScheduleTimeRange {
+  start_time: string  // "HH:MM:SS"
+  end_time: string    // "HH:MM:SS"
+}
+
+export interface UnifiScheduleHoliday {
+  id: string
+  name: string
+  start_time: string
+  end_time: string
+  repeat: boolean
+  description?: string
+}
+
+export interface UnifiSchedule {
+  id: string
+  name: string
+  is_default: boolean
+  type: string
+  weekly: {
+    sunday: UnifiScheduleTimeRange[]
+    monday: UnifiScheduleTimeRange[]
+    tuesday: UnifiScheduleTimeRange[]
+    wednesday: UnifiScheduleTimeRange[]
+    thursday: UnifiScheduleTimeRange[]
+    friday: UnifiScheduleTimeRange[]
+    saturday: UnifiScheduleTimeRange[]
+  }
+  holiday_group_id?: string
+  holiday_group?: {
+    id: string
+    name: string
+    is_default: boolean
+    holidays: UnifiScheduleHoliday[]
+  }
+  holiday_schedule?: UnifiScheduleTimeRange[]
+}
+
 // Cached door (from MongoDB)
 export interface CachedDoor {
   _id: string
@@ -99,4 +138,5 @@ export interface DoorStatus {
   positionStatus: 'open' | 'close' | null
   isOnline: boolean
   lockRule?: UnifiLockRule | null
+  firstPersonInRequired?: boolean
 }
