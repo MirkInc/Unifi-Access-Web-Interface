@@ -365,6 +365,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
             scheduleId={scheduleId}
             fallbackName={scheduleName}
             firstPersonInRequired={door.firstPersonInRequired === true}
+            lockStatus={door.lockStatus}
             open={scheduleOpen}
             onToggle={() => setScheduleOpen((v) => !v)}
           />

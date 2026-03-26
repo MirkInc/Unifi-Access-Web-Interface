@@ -9,6 +9,7 @@ interface Props {
   scheduleId?: string
   fallbackName?: string
   firstPersonInRequired?: boolean
+  lockStatus?: 'lock' | 'unlock' | null
   open: boolean
   onToggle: () => void
 }
@@ -28,6 +29,12 @@ function formatScheduleTime(time: string): string {
   const period = h >= 12 ? 'PM' : 'AM'
   const hour = h % 12 || 12
   return `${hour}:${String(m).padStart(2, '0')} ${period}`
+}
+
+function nowTimePercent(): number {
+  const now = new Date()
+  const minutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60
+  return (minutes / 1440) * 100
 }
 
 function TimeAxis() {
@@ -52,12 +59,19 @@ function TimeAxis() {
   )
 }
 
-export function UnlockScheduleCard({ doorId, scheduleId, fallbackName, firstPersonInRequired = false, open, onToggle }: Props) {
+export function UnlockScheduleCard({ doorId, scheduleId, fallbackName, firstPersonInRequired = false, lockStatus = null, open, onToggle }: Props) {
   const [schedule, setSchedule] = useState<UnifiSchedule | null>(null)
   const [loading, setLoading] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [holidayOpen, setHolidayOpen] = useState(false)
+  const [nowPct, setNowPct] = useState(nowTimePercent)
+
+  useEffect(() => {
+    if (!open) return
+    const id = setInterval(() => setNowPct(nowTimePercent()), 30_000)
+    return () => clearInterval(id)
+  }, [open])
 
   useEffect(() => {
     if (!open || !scheduleId || loaded) return
@@ -90,6 +104,13 @@ export function UnlockScheduleCard({ doorId, scheduleId, fallbackName, firstPers
   const titleName = schedule?.name ?? fallbackName ?? 'No schedule assigned'
   const holidays = schedule?.holiday_group?.holidays ?? []
   const hasHolidaySchedule = (schedule?.holiday_schedule?.length ?? 0) > 0
+  const todayIndex = new Date().getDay()
+  const markerColorClass =
+    lockStatus === 'unlock'
+      ? 'bg-[#006FFF] border-[#006FFF]'
+      : lockStatus === 'lock'
+      ? 'bg-gray-600 border-gray-600'
+      : 'bg-gray-400 border-gray-400'
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
@@ -150,6 +171,15 @@ export function UnlockScheduleCard({ doorId, scheduleId, fallbackName, firstPers
                             style={{ left: `${pct}%` }}
                           />
                         ))}
+                        {i === todayIndex && (
+                          <>
+                            <div
+                              className={`absolute top-0 bottom-0 w-[2px] pointer-events-none z-20 ${markerColorClass}`}
+                              style={{ left: `${nowPct}%` }}
+                              title="Current time"
+                            />
+                          </>
+                        )}
                         {ranges.map((range, ri) => {
                           const left = timeToPercent(range.start_time)
                           const width = timeToPercent(range.end_time) - left
