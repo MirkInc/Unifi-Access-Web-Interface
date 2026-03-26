@@ -1,154 +1,188 @@
 # UniFi Access Web Interface
 
-A self-hosted web application for managing and monitoring [UniFi Access](https://ui.com/door-access) door controllers. Built with Next.js 14, MongoDB, and the UniFi Access Developer API.
+Self-hosted, multi-site UniFi Access management UI built with Next.js, MongoDB, and NextAuth.
 
-## Features
+This project gives you:
+- A user-facing door dashboard
+- Per-door control and visibility permissions
+- A site-level admin portal
+- Activity and door-status history with export
+- UniFi webhook ingestion and event streaming
 
-- **Multi-tenant / multi-site** — manage multiple UniFi Access sites from a single dashboard
-- **Door control** — unlock doors, set temporary unlock timers, keep-unlock schedules, and lock-early overrides
-- **Live status** — real-time door lock/unlock state via UniFi WebSocket
-- **Access logs** — paginated, filterable activity log with granted/denied breakdown, export to Excel
-- **Activity chart** — hourly (1D) and daily (1W / 1M / 3M / custom) bar charts per door
-- **Webhook events** — Door Status tab showing open/close, lock/unlock, schedule, temp-unlock, and emergency events via UniFi webhooks
-- **Smart log caching** — timezone-aware per-day MongoDB cache reduces UniFi API calls from seconds to ~400 ms
-- **Role-based access control** — admin and per-door permissions (`canUnlock`, `canViewLogs`, `canSetLockRule`)
-- **User management** — invite users by email (via Resend), password reset flow, email confirmation
-- **Admin panel** — manage sites, sync doors, register/remove webhooks
+## What This App Does
+
+### User experience
+- Site Manager homepage listing consoles the user can access
+- Console dashboard showing assigned doors and current state
+- Door detail page with:
+  - Live lock/position/controller state
+  - Door controls (based on permissions)
+  - Unlock schedule visualization
+  - Activity chart + log with Excel export
+
+### Admin experience
+- Console/site management (add/edit/delete, sync doors)
+- User management and per-door permissions
+- Door admin settings (including first-person-in requirement)
+- Schedule assignment visibility and updates
+- Webhook registration/removal per console
+
+### Data behavior
+- Real-time-ish updates via:
+  - UniFi webhook events
+  - Server-Sent Events (SSE) fanout to clients
+  - Controlled status refresh fallback
+- Log retrieval strategy:
+  - Historical days from DB cache
+  - Current day fetched live from controller
+  - Automatic catch-up caching for missed days
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 (App Router) |
-| Database | MongoDB + Mongoose |
-| Auth | NextAuth.js (credentials) |
-| UI | Tailwind CSS, Radix UI, Recharts |
-| Email | Resend |
-| UniFi API | Custom client (REST + WebSocket) |
+- Next.js 16 (App Router)
+- React 18
+- TypeScript
+- MongoDB + Mongoose
+- NextAuth (credentials)
+- Tailwind + Radix UI
+- Recharts
+- xlsx export
+- Resend (email flows)
 
 ## Requirements
 
 - Node.js 18+
-- MongoDB 6+ (local or Atlas)
-- UniFi Access controller (firmware 2.2.10+ for webhook support)
-- UniFi Access API token (Access → Settings → General → Advanced → API Token)
-- (Optional) [Resend](https://resend.com) account for email
+- MongoDB 6+ (Atlas or self-hosted)
+- UniFi Access controller reachable from this app
+- UniFi API token per console
 
-## Setup
-
-### 1. Clone and install
+## Quick Start
 
 ```bash
 git clone <your-repo-url>
-cd unifi-access-web
+cd "Unifi Access Web Interface"
 npm install
-```
-
-### 2. Configure environment variables
-
-Create a `.env.local` file in the project root:
-
-```env
-# MongoDB
-MONGODB_URI=mongodb://localhost:27017/unifi-access
-
-# NextAuth
-NEXTAUTH_SECRET=your-random-secret-here
-NEXTAUTH_URL=http://localhost:3000
-
-# Resend (optional — for invite/password-reset emails)
-RESEND_API_KEY=re_xxxxxxxxxxxx
-RESEND_FROM=noreply@yourdomain.com
-```
-
-Generate a `NEXTAUTH_SECRET`:
-```bash
-openssl rand -base64 32
-```
-
-### 3. Run the development server
-
-```bash
+cp .env.local.example .env.local
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). On first run you will be redirected to `/setup` to create the initial admin account.
+Then open [http://localhost:3000](http://localhost:3000).
 
-### 4. Add your first site
+If this is a fresh database, complete first-time setup at `/setup`.
 
-1. Log in as admin and go to **Admin → Sites**
-2. Click **Add Site** and enter your UniFi Access host (e.g. `10.0.1.1:12445`) and API token
-3. Click **Sync Doors** to import all doors from the controller
-4. (Optional) Click **Register Webhook** and enter the base URL where your app is reachable from the UniFi controller (e.g. `http://10.0.2.230:3000`)
+## Environment Variables
 
-## Production Deployment
+Use `.env.local`:
+
+| Variable | Required | Description |
+|---|---|---|
+| `MONGODB_URI` | Yes | MongoDB connection string |
+| `NEXTAUTH_SECRET` | Yes | Session/JWT signing secret |
+| `NEXTAUTH_URL` | Yes | Public base URL for auth callbacks |
+| `INITIAL_ADMIN_EMAIL` | Yes (initial setup) | Email that can bootstrap admin setup |
+| `RESEND_API_KEY` | Optional | Required for invite/reset emails |
+| `RESEND_FROM_EMAIL` | Optional | Sender address for email flows |
+
+Generate `NEXTAUTH_SECRET` (PowerShell):
+
+```powershell
+[System.Convert]::ToBase64String([System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+```
+
+## UniFi Controller Setup
+
+For each console/site:
+1. Create API token in UniFi Access.
+2. Add site in Admin.
+3. Run **Sync Doors**.
+4. Register webhook URL from Admin so status events stream into this app.
+
+Notes:
+- App must be reachable from the controller for webhook delivery.
+- Keep `NEXTAUTH_URL` aligned with your real host (not `localhost` in production).
+
+## Access Model
+
+Roles:
+- `admin`: full access to admin portal and all doors
+- `user`: restricted to explicitly assigned console/door permissions
+
+Per-door permissions include:
+- Unlock
+- End schedule early
+- Start lockdown/timed unlock
+- End lockdown/rule
+- View logs
+
+## Runtime Architecture
+
+- Client requests:
+  - `GET /api/tenants/[id]/events` (SSE stream)
+  - `GET /api/doors/[doorId]/status` (throttled state refresh)
+  - `GET /api/logs` (activity)
+- Webhook ingest:
+  - `POST /api/webhooks/unifi/[tenantId]`
+- Door page lazy sections:
+  - Unlock schedule, chart, and log can be collapsed
+  - Section state is persisted in `sessionStorage`
+  - Data is fetched only when relevant sections are open
+
+## API Highlights
+
+- `GET /api/logs` - unified log fetch
+- `GET /api/logs/export` - Excel export
+- `GET /api/webhook-events` - normalized door-status events
+- `GET /api/doors/[doorId]/status` - current door state
+- `GET /api/doors/[doorId]/schedule` - lazy schedule load for door page
+- `PUT /api/doors/[doorId]/unlock` - one-time unlock action
+- `PUT /api/doors/[doorId]/lock-rule` - lockdown/timed rule actions
+- `POST /api/tenants/[id]/sync` - sync doors from UniFi
+- `POST/DELETE /api/tenants/[id]/webhook` - register/remove webhook
+
+## Deployment
+
+Production:
 
 ```bash
 npm run build
 npm start
 ```
 
-Or deploy to any platform that supports Next.js (Vercel, Railway, Docker, etc.).
+Deploy anywhere Node/Next.js is supported (Vercel, Railway, Docker, VM).
 
-### Docker (example)
+Minimum production checklist:
+- Set all required env vars
+- Use a persistent MongoDB
+- Ensure inbound webhook reachability from UniFi consoles
+- Use HTTPS in production
+- Set `NEXTAUTH_URL` to your public URL
 
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
+## Security Notes
 
-## Webhook Setup
+- Never commit `.env.local` or API keys.
+- Rotate UniFi API tokens periodically.
+- Restrict admin accounts and audit user door permissions.
+- Keep dependencies updated.
 
-Webhooks enable the **Door Status** tab (open/close events, lock state changes, schedules, emergencies). UniFi Access requires the webhook endpoint to be reachable over HTTPS or HTTP from the controller's network.
+## Troubleshooting
 
-1. In the admin panel, go to **Sites** and expand a site
-2. Enter the base URL your app is reachable at from the controller (e.g. `http://10.0.2.230:3000`)
-3. Click **Register Webhook** — the app registers 7 event types with your UniFi controller and stores the HMAC secret automatically
-4. Events appear in the **Door Status** tab on each door's detail page
-
-To remove a webhook, click **Remove** — this also deregisters it from the UniFi controller.
-
-## API Overview
-
-All API routes require authentication (session cookie) except the webhook receiver.
-
-| Route | Method | Description |
-|---|---|---|
-| `/api/logs` | GET | Fetch access logs (with smart cache) |
-| `/api/logs/export` | GET | Export logs to Excel |
-| `/api/webhook-events` | GET | Fetch door status events from webhooks |
-| `/api/webhooks/unifi/[tenantId]` | POST | Public webhook receiver (HMAC-verified) |
-| `/api/doors/[doorId]/unlock` | PUT | Unlock a door |
-| `/api/doors/[doorId]/lock-rule` | PUT | Set lock rule (temp/keep/schedule) |
-| `/api/doors/[doorId]/status` | GET | Live door status (SSE) |
-| `/api/tenants/[id]/sync` | POST | Sync doors from UniFi controller |
-| `/api/tenants/[id]/webhook` | POST/DELETE | Register / remove webhook |
-
-## Log Cache
-
-To minimize latency and UniFi API load, the app maintains a per-door, per-day MongoDB cache:
-
-- **Fast path** (< 500 ms): fully cached past days + today-only live fetch
-- **Backfill**: triggered automatically on first load or after a sync — fetches up to 5,000 historical events
-- Cache keys are stored in the **tenant's local timezone** (e.g. America/Chicago), so day boundaries always align with local midnight
+- "Controller unreachable": verify host/IP/port, token, and network reachability.
+- Webhook events missing: verify webhook registration and route reachability from controller.
+- Login redirects to wrong host: correct `NEXTAUTH_URL`.
+- Empty dashboard for user: verify console assignment and per-door permissions.
 
 ## Project Structure
 
-```
+```text
 app/
-  admin/          # Admin-only pages (sites, users, logs)
-  dashboard/      # Main door dashboard
-  door/[doorId]/  # Door detail page (control + logs + chart)
-  api/            # All API routes
-components/       # Shared UI components
-lib/              # Auth, MongoDB, UniFi client, cache utilities
-models/           # Mongoose schemas
+  admin/                     # admin pages (sites, users, logs, doors, schedules)
+  api/                       # route handlers
+  dashboard/                 # console dashboard
+  door/[doorId]/             # door detail UI
+components/                  # shared UI components
+lib/                         # auth, db, unifi client, helpers
+models/                      # mongoose schemas
+types/                       # shared TS types
 ```
 
 ## License
