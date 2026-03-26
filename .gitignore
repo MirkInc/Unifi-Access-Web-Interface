@@ -27,3 +27,4 @@ Thumbs.db
 *.log
 reference-files/
 next-env.d.ts
+*.tsbuildinfo
