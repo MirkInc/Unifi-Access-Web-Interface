@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { isValidObjectId } from 'mongoose'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import WebhookEvent from '@/models/WebhookEvent'
@@ -163,6 +164,11 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
 
 export async function POST(req: Request, { params }: Params) {
   const { tenantId } = await params
+
+  if (!isValidObjectId(tenantId)) {
+    return new Response('Not found', { status: 404 })
+  }
+
   const rawBody = await req.text()
 
   await connectDB()
