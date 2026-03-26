@@ -60,7 +60,7 @@ This project gives you:
 
 ```bash
 git clone <your-repo-url>
-cd "Unifi Access Web Interface"
+cd <repo-directory>
 npm install
 cp .env.local.example .env.local
 npm run dev
