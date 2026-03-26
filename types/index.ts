@@ -201,3 +201,59 @@ export interface AnalyticsOverview {
   methodMix: MethodMixEntry[]
   anomalies: AnomalyEntry[]
 }
+
+export type HealthSeverity = 'good' | 'warn' | 'critical'
+
+export interface ControllerHealthSnapshot {
+  severity: HealthSeverity
+  reachable: boolean
+  checkedAt: string
+  message: string
+}
+
+export interface WebhookHealthSnapshot {
+  severity: HealthSeverity
+  configured: boolean
+  successCount: number
+  failureCount: number
+  signatureFailCount: number
+  parseFailCount: number
+  successRatio: number
+  lastSuccessAt: string | null
+  lastFailureAt: string | null
+  lastSuccessAgeSeconds: number | null
+}
+
+export interface BackfillDoorLagRow {
+  doorId: string
+  doorName: string
+  logsCachedThrough: string | null
+  lagSeconds: number | null
+  stale: boolean
+}
+
+export interface BackfillHealthSnapshot {
+  severity: HealthSeverity
+  lastDoorSyncAt: string | null
+  syncAgeSeconds: number | null
+  staleDoorCount: number
+  activeDoorCount: number
+  stalePercent: number
+  doors: BackfillDoorLagRow[]
+}
+
+export interface TenantHealthRow {
+  tenantId: string
+  tenantName: string
+  timezone: string
+  overallSeverity: HealthSeverity
+  controller: ControllerHealthSnapshot
+  webhook: WebhookHealthSnapshot
+  backfill: BackfillHealthSnapshot
+}
+
+export interface HealthOverviewResponse {
+  generatedAt: string
+  summary: { good: number; warn: number; critical: number; total: number }
+  rows: TenantHealthRow[]
+}

@@ -4,6 +4,7 @@ import Tenant from '@/models/Tenant'
 import WebhookEvent from '@/models/WebhookEvent'
 import ActorCache from '@/models/ActorCache'
 import { clientForTenant } from '@/lib/unifi'
+import { recordWebhookDeliveryMetric } from '@/lib/webhookHealth'
 import type { UnifiLogEntry } from '@/types'
 
 export const dynamic = 'force-dynamic'
@@ -81,7 +82,6 @@ async function resolveActorForWebhookEvent(
   event: string,
   timestampSec: number
 ): Promise<Record<string, unknown>> {
-  // Keep existing actor if webhook already has one
   const existing = getPayloadActor(payload)
   if (existing?.name) return payload
 
@@ -120,17 +120,14 @@ async function resolveActorForWebhookEvent(
   }
 }
 
-// Fire-and-forget: store the webhook event in MongoDB
 async function processWebhookEvent(tenantId: string, payload: Record<string, unknown>) {
   try {
     await connectDB()
     const data = payload.data as Record<string, unknown> | undefined
     const location = data?.location as Record<string, unknown> | undefined
     const device = data?.device as Record<string, unknown> | undefined
-
-    // Prefer data.location.id; fall back to data.device.location_id
     const unifiDoorId = (location?.id ?? device?.location_id) as string | undefined
-    if (!unifiDoorId) return // can't associate without a door ID
+    if (!unifiDoorId) return
 
     const event = payload.event as string ?? ''
     const timestamp = new Date()
@@ -149,6 +146,7 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
       : payload
 
     await WebhookEvent.create({ tenantId, unifiDoorId, event, timestamp, payload: enrichedPayload })
+    void recordWebhookDeliveryMetric(tenantId, 'success', timestamp)
   } catch (err) {
     console.error('[webhook] processWebhookEvent error:', (err as Error).message)
   }
@@ -156,11 +154,8 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
 
 export async function POST(req: Request, { params }: Params) {
   const { tenantId } = await params
-
-  // Read raw body for HMAC verification
   const rawBody = await req.text()
 
-  // --- HMAC verification ---
   await connectDB()
   const tenant = await Tenant.findById(tenantId).select('webhookSecret').lean()
   if (!tenant || !tenant.webhookSecret) {
@@ -168,17 +163,15 @@ export async function POST(req: Request, { params }: Params) {
   }
 
   const sigHeader = req.headers.get('Signature') ?? req.headers.get('x-signature') ?? ''
-
-  // Format: "t=1695902233,v1=a7ea8840..." — split on comma with optional surrounding spaces
   const parts: Record<string, string> = {}
   for (const part of sigHeader.split(/,\s*/)) {
     const eq = part.indexOf('=')
     if (eq > 0) parts[part.slice(0, eq)] = part.slice(eq + 1)
   }
-  const t = parts['t']
-  const v1 = parts['v1']
-
+  const t = parts.t
+  const v1 = parts.v1
   if (!t || !v1) {
+    void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
     return new Response('Invalid signature', { status: 401 })
   }
 
@@ -191,19 +184,23 @@ export async function POST(req: Request, { params }: Params) {
 
   const expectedBuf = Buffer.from(expected, 'hex')
   const receivedBuf = Buffer.from(v1, 'hex')
-
   if (
     expectedBuf.length !== receivedBuf.length ||
     !crypto.timingSafeEqual(expectedBuf, receivedBuf)
   ) {
+    void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
     return new Response('Invalid signature', { status: 401 })
   }
 
-  // Respond immediately (5-second timeout)
-  const payload = JSON.parse(rawBody) as Record<string, unknown>
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>
+  } catch {
+    void recordWebhookDeliveryMetric(tenantId, 'parse_fail')
+    return new Response('Invalid payload', { status: 400 })
+  }
 
-  // Fire-and-forget — do not await
-  processWebhookEvent(tenantId, payload).catch(console.error)
-
+  void processWebhookEvent(tenantId, payload)
   return new Response('OK', { status: 200 })
 }
+
