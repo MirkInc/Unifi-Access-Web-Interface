@@ -426,7 +426,7 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
               {emailSetupOpen && !emailEnabled && (
                 <div className="mt-3 space-y-3">
                   <OtpInput value={emailCode} onChange={setEmailCode} onComplete={verifyEmailMfa} disabled={mfaBusy} />
-                  <button type="button" className="btn-primary" onClick={verifyEmailMfa} disabled={mfaBusy || emailCode.length !== 6}>Verify</button>
+                  <button type="button" className="btn-primary" onClick={() => void verifyEmailMfa()} disabled={mfaBusy || emailCode.length !== 6}>Verify</button>
                 </div>
               )}
             </div>
@@ -455,7 +455,7 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
                   {totpSecret && <p className="text-xs text-gray-600">Manual key: <span className="font-mono">{totpSecret}</span></p>}
                   <div className="space-y-3">
                     <OtpInput value={totpCode} onChange={setTotpCode} onComplete={verifyTotpSetup} disabled={mfaBusy} />
-                    <button type="button" className="btn-primary" onClick={verifyTotpSetup} disabled={mfaBusy || totpCode.length !== 6}>Verify</button>
+                    <button type="button" className="btn-primary" onClick={() => void verifyTotpSetup()} disabled={mfaBusy || totpCode.length !== 6}>Verify</button>
                   </div>
                 </div>
               )}
@@ -505,4 +505,3 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
     </div>
   )
 }
-
