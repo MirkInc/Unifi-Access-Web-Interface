@@ -18,6 +18,17 @@ export default async function ProfilePage() {
       initialName={user.name}
       initialEmail={user.email}
       role={user.role}
+      initialMfa={{
+        mfaEnforced: user.mfaEnforced ?? false,
+        emailEnabled: user.mfaEmailEnabled ?? false,
+        emailVerified: user.mfaEmailVerified ?? false,
+        totpEnabled: user.mfaTotpEnabled ?? false,
+        passkeys: (user.mfaPasskeys ?? []).map((p: { id: string; name: string; createdAt: Date }) => ({
+          id: p.id,
+          name: p.name,
+          createdAt: p.createdAt,
+        })),
+      }}
     />
   )
 }

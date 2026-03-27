@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { TenantSwitcher } from '@/components/TenantSwitcher'
+import { MfaPolicyBanner } from '@/components/MfaPolicyBanner'
 import { getInitials } from '@/lib/utils'
 
 interface Props {
@@ -27,6 +28,7 @@ export function AppHeader({
 
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+      <MfaPolicyBanner />
       <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
         {/* Left: logo + tenant switcher */}
         <div className="flex items-center gap-3">

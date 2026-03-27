@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -8,7 +8,20 @@ import { cn } from '@/lib/utils'
 
 interface Door { _id: string; name: string }
 interface Tenant { _id: string; name: string }
-interface UserInfo { _id: string; name: string; email: string; role: string; isActive: boolean; pendingEmail: string | null }
+interface UserInfo {
+  _id: string
+  name: string
+  email: string
+  role: string
+  isActive: boolean
+  pendingEmail: string | null
+  preferredPortalUrl: string | null
+  mfaEnforced: boolean
+  mfaRequiredFrom: string | null
+  mfaEmailEnabled: boolean
+  mfaTotpEnabled: boolean
+  mfaPasskeyCount: number
+}
 
 type DoorPerms = {
   canUnlock: boolean
@@ -38,15 +51,25 @@ interface Props {
   tenants: Tenant[]
   doorsByTenant: Record<string, Door[]>
   initialAccess: Record<string, Record<string, DoorPerms>>
+  portalUrls: string[]
 }
 
-export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }: Props) {
+export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, portalUrls }: Props) {
   const router = useRouter()
 
   // Profile fields
   const [profileName, setProfileName] = useState(user.name)
   const [profileEmail, setProfileEmail] = useState(user.email)
   const [profileRole, setProfileRole] = useState(user.role)
+  const [profilePreferredPortalUrl, setProfilePreferredPortalUrl] = useState(user.preferredPortalUrl ?? '')
+  const [profileMfaEnforced, setProfileMfaEnforced] = useState(Boolean(user.mfaEnforced))
+  const initialDelayDays = (() => {
+    if (!user.mfaRequiredFrom) return 0
+    const diff = new Date(user.mfaRequiredFrom).getTime() - Date.now()
+    if (diff <= 0) return 0
+    return Math.ceil(diff / (24 * 60 * 60 * 1000))
+  })()
+  const [profileMfaEnforceDelayDays, setProfileMfaEnforceDelayDays] = useState(initialDelayDays)
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
@@ -56,8 +79,26 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
 
   // Save state
   const [saving, setSaving] = useState(false)
+  const [resendingInvite, setResendingInvite] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+
+  async function handleResendInvite() {
+    setResendingInvite(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/users/${user._id}/resend-invite`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(d.error ?? 'Failed to resend invite')
+        return
+      }
+      setSuccess('Invitation resent.')
+    } finally {
+      setResendingInvite(false)
+    }
+  }
 
   async function handleSave() {
     setSaving(true); setError(''); setSuccess('')
@@ -71,6 +112,9 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
       name: profileName,
       email: profileEmail,
       role: profileRole,
+      preferredPortalUrl: profilePreferredPortalUrl || null,
+      mfaEnforced: profileMfaEnforced,
+      mfaEnforceDelayDays: profileMfaEnforceDelayDays,
       tenantAccess,
     }
     if (newPassword) body.password = newPassword
@@ -174,8 +218,13 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
         <div className="flex items-center gap-3">
           {success && <span className="text-sm text-green-600 font-medium">{success}</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}
+          {!user.isActive && (
+            <button className="btn-secondary" onClick={handleResendInvite} disabled={resendingInvite}>
+              {resendingInvite ? 'Sending…' : 'Resend Invite'}
+            </button>
+          )}
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
@@ -203,6 +252,19 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
             </select>
           </div>
           <div>
+            <label className="label">Preferred Portal URL</label>
+            <select
+              className="input"
+              value={profilePreferredPortalUrl}
+              onChange={(e) => setProfilePreferredPortalUrl(e.target.value)}
+            >
+              <option value="">Default (current domain)</option>
+              {portalUrls.map((url) => (
+                <option key={url} value={url}>{url}</option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="label">New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
             <div className="relative">
               <input
@@ -223,6 +285,37 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
                 {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+          <div className="sm:col-span-2 border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-medium text-gray-900 mb-3">MFA Policy</p>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-[#006FFF]"
+                checked={profileMfaEnforced}
+                onChange={(e) => setProfileMfaEnforced(e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">Enforce MFA for this user at every login</span>
+            </label>
+            {profileMfaEnforced && (
+              <div className="mt-3">
+                <label className="label">Enforcement Delay (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  className="input max-w-[180px]"
+                  value={profileMfaEnforceDelayDays}
+                  onChange={(e) => setProfileMfaEnforceDelayDays(Math.max(0, Math.min(365, Number(e.target.value || 0))))}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  0 = enforce on next login. User will receive an email notification when this policy is enabled.
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-2">
+              Enabled methods: {user.mfaEmailEnabled ? 'Email' : ''}{user.mfaEmailEnabled && user.mfaTotpEnabled ? ', ' : ''}{user.mfaTotpEnabled ? 'Authenticator app' : ''}{(user.mfaEmailEnabled || user.mfaTotpEnabled) && user.mfaPasskeyCount > 0 ? ', ' : ''}{user.mfaPasskeyCount > 0 ? `Passkeys (${user.mfaPasskeyCount})` : ''}{!user.mfaEmailEnabled && !user.mfaTotpEnabled && user.mfaPasskeyCount === 0 ? 'None yet' : ''}
+            </p>
           </div>
         </div>
       </div>
@@ -340,3 +433,6 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
     </div>
   )
 }
+
+
+

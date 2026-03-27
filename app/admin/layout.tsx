@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { TenantSwitcher } from '@/components/TenantSwitcher'
+import { MfaPolicyBanner } from '@/components/MfaPolicyBanner'
 import { AdminNav } from './AdminNav'
 import { AdminUserMenu } from './AdminUserMenu'
 
@@ -31,6 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <MfaPolicyBanner />
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-[#006FFF] flex items-center justify-center flex-shrink-0">

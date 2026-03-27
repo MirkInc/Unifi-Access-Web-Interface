@@ -13,6 +13,7 @@ interface UserRow {
   role: string
   isActive: boolean
   pendingEmail: string | null
+  preferredPortalUrl: string | null
   tenantCount: number
 }
 
@@ -21,12 +22,15 @@ interface Tenant { _id: string; name: string }
 interface Props {
   users: UserRow[]
   tenants: Tenant[]
+  portalUrls: string[]
 }
 
 function CreateUserModal({
+  portalUrls,
   onClose,
   onCreated,
 }: {
+  portalUrls: string[]
   onClose: () => void
   onCreated: () => void
 }) {
@@ -35,6 +39,7 @@ function CreateUserModal({
   const [role, setRole] = useState('user')
   const [sendInvite, setSendInvite] = useState(true)
   const [password, setPassword] = useState('')
+  const [preferredPortalUrl, setPreferredPortalUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -44,7 +49,14 @@ function CreateUserModal({
     const res = await fetch('/api/users', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email, role, sendInvite, password: sendInvite ? undefined : password }),
+      body: JSON.stringify({
+        name,
+        email,
+        role,
+        sendInvite,
+        password: sendInvite ? undefined : password,
+        preferredPortalUrl: preferredPortalUrl || undefined,
+      }),
     })
     setLoading(false)
     if (res.ok) { onCreated(); onClose() }
@@ -79,6 +91,19 @@ function CreateUserModal({
             <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
               <option value="user">User (tenant access only)</option>
               <option value="admin">Admin (full management access)</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Preferred Portal URL</label>
+            <select
+              className="input"
+              value={preferredPortalUrl}
+              onChange={(e) => setPreferredPortalUrl(e.target.value)}
+            >
+              <option value="">Default (current domain)</option>
+              {portalUrls.map((url) => (
+                <option key={url} value={url}>{url}</option>
+              ))}
             </select>
           </div>
 
@@ -128,9 +153,11 @@ function CreateUserModal({
   )
 }
 
-export function UsersClient({ users, tenants: _tenants }: Props) {
+export function UsersClient({ users, tenants: _tenants, portalUrls }: Props) {
   const [showCreate, setShowCreate] = useState(false)
   const [search, setSearch] = useState('')
+  const [resendingId, setResendingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const router = useRouter()
 
   const filtered = users.filter(
@@ -143,6 +170,22 @@ export function UsersClient({ users, tenants: _tenants }: Props) {
     if (!confirm(`Delete user "${name}"?`)) return
     const res = await fetch(`/api/users/${id}`, { method: 'DELETE' })
     if (res.ok) router.refresh()
+  }
+
+  async function handleResendInvite(id: string, name: string) {
+    setResendingId(id)
+    setNotice(null)
+    try {
+      const res = await fetch(`/api/users/${id}/resend-invite`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setNotice({ type: 'error', text: d.error ?? 'Failed to resend invitation' })
+        return
+      }
+      setNotice({ type: 'success', text: `Reminder email sent to ${name}.` })
+    } finally {
+      setResendingId(null)
+    }
   }
 
   return (
@@ -163,6 +206,17 @@ export function UsersClient({ users, tenants: _tenants }: Props) {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
+          {notice && (
+            <div
+              className={`mt-3 text-sm px-3 py-2 rounded-lg border ${
+                notice.type === 'success'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : 'bg-red-50 text-red-700 border-red-200'
+              }`}
+            >
+              {notice.text}
+            </div>
+          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -174,6 +228,7 @@ export function UsersClient({ users, tenants: _tenants }: Props) {
                 <th className="px-4 py-3">User</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Sites</th>
+                <th className="px-4 py-3">Preferred URL</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -212,8 +267,24 @@ export function UsersClient({ users, tenants: _tenants }: Props) {
                   <td className="px-4 py-3 text-gray-500">
                     {u.tenantCount} site{u.tenantCount !== 1 ? 's' : ''}
                   </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {u.preferredPortalUrl ? (
+                      <span className="break-all">{u.preferredPortalUrl}</span>
+                    ) : (
+                      <span className="text-gray-400">Default (current domain)</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      {!u.isActive && (
+                        <button
+                          className="text-xs text-gray-600 hover:underline disabled:opacity-50"
+                          onClick={() => handleResendInvite(u._id, u.name)}
+                          disabled={resendingId === u._id}
+                        >
+                          {resendingId === u._id ? 'Sending…' : 'Resend Invite'}
+                        </button>
+                      )}
                       <Link
                         href={`/admin/users/${u._id}`}
                         className="text-xs text-[#006FFF] hover:underline font-medium"
@@ -237,6 +308,7 @@ export function UsersClient({ users, tenants: _tenants }: Props) {
 
       {showCreate && (
         <CreateUserModal
+          portalUrls={portalUrls}
           onClose={() => setShowCreate(false)}
           onCreated={() => router.refresh()}
         />

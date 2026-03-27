@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
 
@@ -53,7 +54,13 @@ function TenantForm({
 }: {
   initial?: Partial<Tenant>
   maskedApiKey?: string
-  onSave: (data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) => Promise<void>
+  onSave: (data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) => Promise<void>
   onCancel: () => void
 }) {
   const parsed = initial?.unifiHost ? parseHost(initial.unifiHost) : null
@@ -271,7 +278,13 @@ export function TenantsClient({ tenants }: Props) {
 
   const editingTenant = tenants.find((t) => t._id === editId)
 
-  async function handleAdd(data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) {
+  async function handleAdd(data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) {
     const res = await fetch('/api/tenants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -282,7 +295,13 @@ export function TenantsClient({ tenants }: Props) {
     router.refresh()
   }
 
-  async function handleEdit(id: string, data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) {
+  async function handleEdit(id: string, data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) {
     const res = await fetch(`/api/tenants/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -358,11 +377,11 @@ export function TenantsClient({ tenants }: Props) {
               className={`card p-5 transition-opacity ${editId && editId !== t._id ? 'opacity-40' : ''}`}
             >
               <div className="flex items-start justify-between mb-3">
-                <div>
+                <div className="min-w-0">
                   <h3 className="font-semibold text-gray-900">{t.name}</h3>
                   {t.description && <p className="text-xs text-gray-400 mt-0.5">{t.description}</p>}
                 </div>
-                <div className="flex gap-1">
+                <div className="flex gap-1 flex-shrink-0 ml-2">
                   <button
                     className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
                     title="Edit"
@@ -427,6 +446,16 @@ export function TenantsClient({ tenants }: Props) {
                   {syncResult.msg}
                 </div>
               )}
+
+              <Link
+                href={`/admin/tenants/${t._id}/doors`}
+                className="btn-primary w-full flex items-center justify-center gap-2 text-xs mb-2"
+              >
+                Manage Site
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                </svg>
+              </Link>
 
               <button
                 className="btn-secondary w-full flex items-center justify-center gap-2 text-xs"

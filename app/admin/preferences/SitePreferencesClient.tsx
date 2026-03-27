@@ -59,16 +59,9 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
       const res = await fetch('/api/admin/site-preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId,
-          hideUnlockedTime,
-          hideUnauthorizedOpenTime,
-        }),
+        body: JSON.stringify({ tenantId, hideUnlockedTime, hideUnauthorizedOpenTime }),
       })
-      if (!res.ok) {
-        setError('Failed to save preferences')
-        return
-      }
+      if (!res.ok) { setError('Failed to save preferences'); return }
       setSaved(true)
       window.setTimeout(() => setSaved(false), 1500)
     } catch {
@@ -79,13 +72,8 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
   }
 
   return (
-    <div className="space-y-5 max-w-3xl">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Site Preferences</h1>
-        <p className="text-gray-500 mt-1">Manage per-site feature visibility and behavior.</p>
-      </div>
-
-      <div className="card p-5 space-y-4">
+    <div className="space-y-4 max-w-2xl">
+      {tenants.length > 1 && (
         <div>
           <label className="label">Site</label>
           <Select.Root value={tenantId || '__none'} onValueChange={(v) => setTenantId(v === '__none' ? '' : v)}>
@@ -107,33 +95,35 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
             </Select.Portal>
           </Select.Root>
         </div>
+      )}
 
-        <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+      <div className="card p-5 space-y-4">
+        <div>
           <h2 className="font-semibold text-gray-900">Analytics (Temporary Controls)</h2>
-          <p className="text-sm text-gray-500">Hide metrics that are still being refined.</p>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={hideUnlockedTime}
-              onChange={(e) => setHideUnlockedTime(e.target.checked)}
-              disabled={loading || saving}
-            />
-            <span className="text-sm text-gray-700">Hide “Estimated Time Unlocked” sections</span>
-          </label>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={hideUnauthorizedOpenTime}
-              onChange={(e) => setHideUnauthorizedOpenTime(e.target.checked)}
-              disabled={loading || saving}
-            />
-            <span className="text-sm text-gray-700">Hide “Unauthorized Open Time” sections</span>
-          </label>
+          <p className="text-sm text-gray-500 mt-1">Hide metrics that are still being refined.</p>
         </div>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hideUnlockedTime}
+            onChange={(e) => setHideUnlockedTime(e.target.checked)}
+            disabled={loading || saving}
+          />
+          <span className="text-sm text-gray-700">Hide &quot;Estimated Time Unlocked&quot; sections</span>
+        </label>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hideUnauthorizedOpenTime}
+            onChange={(e) => setHideUnauthorizedOpenTime(e.target.checked)}
+            disabled={loading || saving}
+          />
+          <span className="text-sm text-gray-700">Hide &quot;Unauthorized Open Time&quot; sections</span>
+        </label>
 
         <div className="flex items-center gap-3">
           <button
@@ -151,4 +141,3 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
     </div>
   )
 }
-

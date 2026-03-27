@@ -31,7 +31,13 @@ export async function POST(req: Request) {
   }
 
   await connectDB()
-  const tenant = await Tenant.create({ name, description, unifiHost, unifiApiKey, timezone: timezone ?? '' })
+  const tenant = await Tenant.create({
+    name,
+    description,
+    unifiHost,
+    unifiApiKey,
+    timezone: timezone ?? '',
+  })
   await writeAudit({
     req,
     tenantId: tenant._id.toString(),

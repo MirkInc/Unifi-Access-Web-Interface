@@ -37,7 +37,12 @@ export async function PUT(req: Request, { params }: Params) {
 
   await connectDB()
 
-  const update: Record<string, string> = { name, description, unifiHost, timezone: timezone ?? '' }
+  const update: Record<string, string | null> = {
+    name,
+    description,
+    unifiHost,
+    timezone: timezone ?? '',
+  }
   if (unifiApiKey?.trim()) update.unifiApiKey = unifiApiKey.trim()
 
   try {
@@ -55,7 +60,11 @@ export async function PUT(req: Request, { params }: Params) {
       entityId: tenant._id.toString(),
       outcome: 'success',
       message: `Updated site ${tenant.name}`,
-      metadata: { tenantName: tenant.name, unifiHost: tenant.unifiHost, timezone: tenant.timezone },
+      metadata: {
+        tenantName: tenant.name,
+        unifiHost: tenant.unifiHost,
+        timezone: tenant.timezone,
+      },
     })
     return NextResponse.json(tenant)
   } catch (err) {
