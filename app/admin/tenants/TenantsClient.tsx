@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { TimezoneSelect } from '@/components/TimezoneSelect'
 
@@ -18,6 +18,16 @@ interface Tenant {
 }
 
 interface Props { tenants: Tenant[] }
+
+interface ControllerWebhook {
+  id: string
+  name: string
+  endpoint: string
+  events: string[]
+  createdAt: string | null
+  updatedAt: string | null
+  managedByPortal: boolean
+}
 
 // Parse a stored unifiHost (may be "host:port" legacy or "https://host:port") into parts
 function parseHost(unifiHost: string): { protocol: string; host: string; port: string } {
@@ -183,6 +193,33 @@ export function TenantsClient({ tenants }: Props) {
   const [webhookError, setWebhookError] = useState<Record<string, string>>({})
   const [showWebhookForm, setShowWebhookForm] = useState<string | null>(null)
   const [webhookBaseUrl, setWebhookBaseUrl] = useState<Record<string, string>>({})
+  const [webhookList, setWebhookList] = useState<Record<string, ControllerWebhook[]>>({})
+  const [webhookListLoading, setWebhookListLoading] = useState<Record<string, boolean>>({})
+
+  async function loadWebhookList(tenantId: string) {
+    setWebhookListLoading((prev) => ({ ...prev, [tenantId]: true }))
+    setWebhookError((prev) => ({ ...prev, [tenantId]: '' }))
+    try {
+      const res = await fetch(`/api/tenants/${tenantId}/webhook`, { cache: 'no-store' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setWebhookError((prev) => ({ ...prev, [tenantId]: d.error ?? 'Failed to load webhooks' }))
+        return
+      }
+      setWebhookList((prev) => ({ ...prev, [tenantId]: Array.isArray(d.webhooks) ? d.webhooks : [] }))
+    } catch {
+      setWebhookError((prev) => ({ ...prev, [tenantId]: 'Network error' }))
+    } finally {
+      setWebhookListLoading((prev) => ({ ...prev, [tenantId]: false }))
+    }
+  }
+
+  useEffect(() => {
+    tenants.forEach((t) => {
+      void loadWebhookList(t._id)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenants.map((t) => t._id).join(',')])
 
   async function handleRegisterWebhook(tenantId: string) {
     const baseUrl = webhookBaseUrl[tenantId] ?? (typeof window !== 'undefined' ? window.location.origin : '')
@@ -199,6 +236,7 @@ export function TenantsClient({ tenants }: Props) {
         setWebhookError((prev) => ({ ...prev, [tenantId]: d.error ?? 'Failed to register webhook' }))
       } else {
         setShowWebhookForm(null)
+        await loadWebhookList(tenantId)
         router.refresh()
       }
     } catch {
@@ -208,16 +246,20 @@ export function TenantsClient({ tenants }: Props) {
     }
   }
 
-  async function handleRemoveWebhook(tenantId: string) {
-    if (!confirm('Remove webhook? Door status events will no longer be recorded.')) return
+  async function handleRemoveWebhook(tenantId: string, webhookId: string, managedByPortal: boolean) {
+    const msg = managedByPortal
+      ? 'Remove this portal webhook? Door status events to this app will stop until you register again.'
+      : 'Remove this webhook from the UniFi site?'
+    if (!confirm(msg)) return
     setWebhookLoading(tenantId)
     setWebhookError((prev) => ({ ...prev, [tenantId]: '' }))
     try {
-      const res = await fetch(`/api/tenants/${tenantId}/webhook`, { method: 'DELETE' })
+      const res = await fetch(`/api/tenants/${tenantId}/webhook?webhookId=${encodeURIComponent(webhookId)}`, { method: 'DELETE' })
       if (!res.ok) {
         const d = await res.json()
         setWebhookError((prev) => ({ ...prev, [tenantId]: d.error ?? 'Failed to remove webhook' }))
       } else {
+        await loadWebhookList(tenantId)
         router.refresh()
       }
     } catch {
@@ -405,25 +447,48 @@ export function TenantsClient({ tenants }: Props) {
                   </div>
                 )}
 
-                {t.webhookId ? (
-                  // Webhook is active
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
-                      <span className="text-xs text-green-700 font-medium flex-shrink-0">Webhook Active</span>
-                      {t.webhookBaseUrl && (
-                        <span className="text-xs text-gray-400 font-mono truncate">{t.webhookBaseUrl}</span>
-                      )}
-                    </div>
+                <div className="mb-2">
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs text-gray-500">Controller webhooks</p>
                     <button
-                      className="text-xs text-red-500 hover:text-red-700 flex-shrink-0 disabled:opacity-50"
-                      onClick={() => handleRemoveWebhook(t._id)}
-                      disabled={webhookLoading === t._id}
+                      className="text-xs text-[#006FFF] hover:text-[#0056CC] disabled:opacity-50"
+                      onClick={() => loadWebhookList(t._id)}
+                      disabled={!!webhookListLoading[t._id] || webhookLoading === t._id}
                     >
-                      {webhookLoading === t._id ? 'Removing…' : 'Remove'}
+                      {webhookListLoading[t._id] ? 'Refreshing...' : 'Refresh'}
                     </button>
                   </div>
-                ) : showWebhookForm === t._id ? (
+                  {webhookListLoading[t._id] && !webhookList[t._id] ? (
+                    <p className="text-xs text-gray-400">Loading webhooks...</p>
+                  ) : (webhookList[t._id] ?? []).length === 0 ? (
+                    <p className="text-xs text-gray-400">No webhooks configured on this site.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {(webhookList[t._id] ?? []).map((w) => (
+                        <div key={w.id} className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 px-2 py-1.5">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className={`w-2 h-2 rounded-full ${w.managedByPortal ? 'bg-green-400' : 'bg-gray-300'}`} />
+                              <span className="text-xs text-gray-700 truncate">{w.name || 'Unnamed webhook'}</span>
+                              {w.managedByPortal && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">Portal</span>}
+                            </div>
+                            <p className="text-[11px] text-gray-400 font-mono break-all whitespace-normal">{w.endpoint}</p>
+                            <p className="text-[11px] text-gray-400">{w.events.length} event{w.events.length !== 1 ? 's' : ''}</p>
+                          </div>
+                          <button
+                            className="text-xs text-red-500 hover:text-red-700 flex-shrink-0 disabled:opacity-50"
+                            onClick={() => handleRemoveWebhook(t._id, w.id, w.managedByPortal)}
+                            disabled={webhookLoading === t._id}
+                          >
+                            {webhookLoading === t._id ? 'Removing...' : 'Remove'}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {showWebhookForm === t._id ? (
                   // Inline registration form
                   <div className="space-y-2">
                     <label className="text-xs text-gray-500">Base URL for this app</label>
@@ -476,3 +541,4 @@ export function TenantsClient({ tenants }: Props) {
     </div>
   )
 }
+

@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import bcrypt from 'bcryptjs'
+import { writeAudit } from '@/lib/audit'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -23,6 +24,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session?.user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const sessionUser = session.user as { id: string; role?: string; name?: string; email?: string }
 
   const { name, email, currentPassword, newPassword } = await req.json()
 
@@ -31,7 +33,7 @@ export async function PUT(req: Request) {
   }
 
   await connectDB()
-  const user = await User.findById((session.user as { id: string }).id)
+  const user = await User.findById(sessionUser.id)
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   // Check if email is taken by someone else
@@ -57,6 +59,24 @@ export async function PUT(req: Request) {
   user.name = name.trim()
   user.email = emailLower
   await user.save()
+
+  await writeAudit({
+    req,
+    actorUserId: user._id.toString(),
+    actorName: user.name,
+    actorEmail: user.email,
+    actorRole: user.role,
+    action: 'profile.update',
+    entityType: 'user',
+    entityId: user._id.toString(),
+    outcome: 'success',
+    message: 'Updated own profile',
+    metadata: {
+      changedEmail: emailLower !== (sessionUser.email ?? '').toLowerCase(),
+      changedName: name.trim() !== (sessionUser.name ?? ''),
+      changedPassword: Boolean(newPassword),
+    },
+  })
 
   return NextResponse.json({ name: user.name, email: user.email, role: user.role })
 }

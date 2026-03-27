@@ -6,8 +6,14 @@ import { cn } from '@/lib/utils'
 
 const links = [
   { href: '/admin/tenants', label: 'Sites' },
+  { href: '/admin/doors', label: 'Doors' },
+  { href: '/admin/schedules', label: 'Schedules' },
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/logs', label: 'Activity Logs' },
+  { href: '/admin/health', label: 'Health' },
+  { href: '/admin/analytics', label: 'Analytics' },
+  { href: '/admin/preferences', label: 'Preferences' },
+  { href: '/admin/audit', label: 'Audit Logs' },
 ]
 
 export function AdminNav() {

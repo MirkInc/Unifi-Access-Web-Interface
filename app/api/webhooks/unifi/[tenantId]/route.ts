@@ -1,14 +1,26 @@
 import crypto from 'crypto'
+import { isValidObjectId } from 'mongoose'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import WebhookEvent from '@/models/WebhookEvent'
 import ActorCache from '@/models/ActorCache'
 import { clientForTenant } from '@/lib/unifi'
+import { recordWebhookDeliveryMetric } from '@/lib/webhookHealth'
 import type { UnifiLogEntry } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
 type Params = { params: Promise<{ tenantId: string }> }
+
+function safeCompareHex(aHex: string, bHex: string): boolean {
+  const normalizedA = aHex.trim().toLowerCase()
+  const normalizedB = bHex.trim().toLowerCase()
+  const hex64 = /^[a-f0-9]{64}$/
+  if (!hex64.test(normalizedA) || !hex64.test(normalizedB)) return false
+  const a = Buffer.from(normalizedA, 'hex')
+  const b = Buffer.from(normalizedB, 'hex')
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
 
 function getPayloadActor(payload: Record<string, unknown>): { id?: string; name?: string } | null {
   const data = payload.data as Record<string, unknown> | undefined
@@ -81,7 +93,6 @@ async function resolveActorForWebhookEvent(
   event: string,
   timestampSec: number
 ): Promise<Record<string, unknown>> {
-  // Keep existing actor if webhook already has one
   const existing = getPayloadActor(payload)
   if (existing?.name) return payload
 
@@ -120,17 +131,14 @@ async function resolveActorForWebhookEvent(
   }
 }
 
-// Fire-and-forget: store the webhook event in MongoDB
 async function processWebhookEvent(tenantId: string, payload: Record<string, unknown>) {
   try {
     await connectDB()
     const data = payload.data as Record<string, unknown> | undefined
     const location = data?.location as Record<string, unknown> | undefined
     const device = data?.device as Record<string, unknown> | undefined
-
-    // Prefer data.location.id; fall back to data.device.location_id
     const unifiDoorId = (location?.id ?? device?.location_id) as string | undefined
-    if (!unifiDoorId) return // can't associate without a door ID
+    if (!unifiDoorId) return
 
     const event = payload.event as string ?? ''
     const timestamp = new Date()
@@ -157,53 +165,94 @@ async function processWebhookEvent(tenantId: string, payload: Record<string, unk
 export async function POST(req: Request, { params }: Params) {
   const { tenantId } = await params
 
-  // Read raw body for HMAC verification
-  const rawBody = await req.text()
-
-  // --- HMAC verification ---
-  await connectDB()
-  const tenant = await Tenant.findById(tenantId).select('webhookSecret').lean()
-  if (!tenant || !tenant.webhookSecret) {
+  if (!isValidObjectId(tenantId)) {
     return new Response('Not found', { status: 404 })
   }
 
-  const sigHeader = req.headers.get('Signature') ?? req.headers.get('x-signature') ?? ''
+  const rawBody = await req.text()
 
-  // Format: "t=1695902233,v1=a7ea8840..." — split on comma with optional surrounding spaces
+  await connectDB()
+  const tenant = await Tenant.findById(tenantId).select('webhookSecret webhookConfigs').lean()
+  const configuredSecrets = [
+    ...(tenant?.webhookSecret ? [tenant.webhookSecret] : []),
+    ...(
+      Array.isArray((tenant as { webhookConfigs?: Array<{ secret?: string }> } | null)?.webhookConfigs)
+        ? (((tenant as { webhookConfigs?: Array<{ secret?: string }> }).webhookConfigs ?? [])
+            .map((w) => w.secret)
+            .filter((s): s is string => typeof s === 'string' && s.length > 0))
+        : []
+    ),
+  ]
+  const uniqueSecrets = Array.from(new Set(configuredSecrets))
+  if (!tenant || uniqueSecrets.length === 0) {
+    return new Response('Not found', { status: 404 })
+  }
+
+  const sigHeader =
+    req.headers.get('Signature') ??
+    req.headers.get('x-signature') ??
+    req.headers.get('x-unifi-signature') ??
+    req.headers.get('x-ubnt-signature') ??
+    ''
   const parts: Record<string, string> = {}
   for (const part of sigHeader.split(/,\s*/)) {
     const eq = part.indexOf('=')
     if (eq > 0) parts[part.slice(0, eq)] = part.slice(eq + 1)
   }
-  const t = parts['t']
-  const v1 = parts['v1']
+  const t = parts.t
+  const v1 = parts.v1
+  const hasStructuredSig = !!t && !!v1
+  const hasAnySigHeader = sigHeader.trim().length > 0
 
-  if (!t || !v1) {
+  let signatureOk = false
+  if (hasStructuredSig) {
+    for (const secret of uniqueSecrets) {
+      const expected = crypto
+        .createHmac('sha256', secret)
+        .update(t as string)
+        .update('.')
+        .update(rawBody)
+        .digest('hex')
+      if (safeCompareHex(expected, v1 as string)) {
+        signatureOk = true
+        break
+      }
+    }
+  } else if (hasAnySigHeader) {
+    // Backward-compatible support for raw-signature headers from older controller variants.
+    const rawCandidate =
+      sigHeader.match(/[a-fA-F0-9]{64}/)?.[0] ??
+      sigHeader.split(',')[0]?.trim() ??
+      ''
+    for (const secret of uniqueSecrets) {
+      const expectedRaw = crypto
+        .createHmac('sha256', secret)
+        .update(rawBody)
+        .digest('hex')
+      if (safeCompareHex(expectedRaw, rawCandidate)) {
+        signatureOk = true
+        break
+      }
+    }
+  }
+
+  if (!signatureOk) {
+    // Ignore unsigned internet noise; count only genuine signed validation failures.
+    if (hasAnySigHeader) void recordWebhookDeliveryMetric(tenantId, 'signature_fail')
     return new Response('Invalid signature', { status: 401 })
   }
 
-  const expected = crypto
-    .createHmac('sha256', tenant.webhookSecret)
-    .update(t)
-    .update('.')
-    .update(rawBody)
-    .digest('hex')
-
-  const expectedBuf = Buffer.from(expected, 'hex')
-  const receivedBuf = Buffer.from(v1, 'hex')
-
-  if (
-    expectedBuf.length !== receivedBuf.length ||
-    !crypto.timingSafeEqual(expectedBuf, receivedBuf)
-  ) {
-    return new Response('Invalid signature', { status: 401 })
+  let payload: Record<string, unknown>
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>
+  } catch {
+    void recordWebhookDeliveryMetric(tenantId, 'parse_fail')
+    return new Response('Invalid payload', { status: 400 })
   }
 
-  // Respond immediately (5-second timeout)
-  const payload = JSON.parse(rawBody) as Record<string, unknown>
+  // Delivery succeeded at transport/auth level; process asynchronously after acking.
+  void recordWebhookDeliveryMetric(tenantId, 'success')
 
-  // Fire-and-forget — do not await
-  processWebhookEvent(tenantId, payload).catch(console.error)
-
+  void processWebhookEvent(tenantId, payload)
   return new Response('OK', { status: 200 })
 }

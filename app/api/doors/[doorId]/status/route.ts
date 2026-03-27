@@ -50,6 +50,7 @@ export async function GET(_req: Request, { params }: Params) {
       positionStatus: live?.door_position_status ?? null,
       isOnline: !!live,
       lockRule,
+      firstPersonInRequired: door.firstPersonInRequired === true,
     })
   } catch (err) {
     console.error('[/api/doors/status] UniFi error:', (err as Error).message)

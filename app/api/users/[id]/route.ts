@@ -8,6 +8,7 @@ import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
 import { generateToken } from '@/lib/utils'
 import { sendEmailChangeNotification, sendEmailConfirmation } from '@/lib/mail'
+import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -30,6 +31,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
   const { name, email, role, password, tenantAccess } = body
@@ -38,6 +40,10 @@ export async function PUT(req: Request, { params }: Params) {
 
   const user = await User.findById(id)
   if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const beforeName = user.name
+  const beforeEmail = user.email
+  const beforeRole = user.role
+  const beforeAccess = JSON.stringify(user.tenantAccess ?? [])
 
   const update: Record<string, unknown> = {}
   if (name) update.name = name.trim()
@@ -72,18 +78,78 @@ export async function PUT(req: Request, { params }: Params) {
   }
 
   const updated = await User.findByIdAndUpdate(id, update, { new: true }).select('-passwordHash')
+  const changedName = typeof name === 'string' && name.trim() !== beforeName
+  const changedEmail = typeof email === 'string' && email.toLowerCase().trim() !== beforeEmail
+  const changedRole = typeof role === 'string' && role !== beforeRole
+  const changedPassword = Boolean(password)
+  const changedAccess = tenantAccess !== undefined && JSON.stringify(tenantAccess) !== beforeAccess
+  const changedFields = [
+    changedName ? 'name' : null,
+    changedEmail ? 'email' : null,
+    changedRole ? 'role' : null,
+    changedPassword ? 'password' : null,
+    changedAccess ? 'door access' : null,
+  ].filter(Boolean) as string[]
+
+  await writeAudit({
+    req,
+    actorUserId: sessionUser.id,
+    actorName: sessionUser.name ?? 'Admin',
+    actorEmail: sessionUser.email,
+    actorRole: sessionUser.role,
+    action: 'user.update',
+    entityType: 'user',
+    entityId: id,
+    outcome: 'success',
+    message: changedFields.length > 0
+      ? `Updated user ${updated?.email ?? id} (changed: ${changedFields.join(', ')})`
+      : `Updated user ${updated?.email ?? id} (no field changes)`,
+    metadata: {
+      changedFields,
+      changedName,
+      changedEmail,
+      changedRole,
+      changedPassword,
+      changedAccess,
+      before: {
+        name: beforeName,
+        email: beforeEmail,
+        role: beforeRole,
+      },
+      after: {
+        name: updated?.name ?? '',
+        email: updated?.email ?? '',
+        role: updated?.role ?? '',
+      },
+    },
+  })
   revalidatePath('/admin/users')
   return NextResponse.json(updated)
 }
 
-export async function DELETE(_req: Request, { params }: Params) {
+export async function DELETE(req: Request, { params }: Params) {
   const { id } = await params
   const session = await getServerSession(authOptions)
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   await connectDB()
+  const user = await User.findById(id).select('email').lean()
   await User.findByIdAndDelete(id)
+  await writeAudit({
+    req,
+    actorUserId: sessionUser.id,
+    actorName: sessionUser.name ?? 'Admin',
+    actorEmail: sessionUser.email,
+    actorRole: sessionUser.role,
+    action: 'user.delete',
+    entityType: 'user',
+    entityId: id,
+    outcome: 'success',
+    message: `Deleted user ${user?.email ?? id}`,
+    metadata: { email: user?.email ?? '' },
+  })
   return NextResponse.json({ success: true })
 }

@@ -7,9 +7,19 @@ import Tenant from '@/models/Tenant'
 import User from '@/models/User'
 import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
+import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ doorId: string }> }
 type LockRuleType = 'keep_lock' | 'keep_unlock' | 'custom' | 'reset' | 'lock_early'
+
+function formatIntervalMinutes(interval?: number): string | null {
+  if (typeof interval !== 'number' || interval <= 0) return null
+  const hours = Math.floor(interval / 60)
+  const minutes = interval % 60
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`
+  if (hours > 0) return `${hours}h`
+  return `${minutes}m`
+}
 
 // Determine which permission is needed for a given lock rule type
 function requiredPermission(type: LockRuleType): keyof {
@@ -40,7 +50,7 @@ export async function PUT(req: Request, { params }: Params) {
   const door = await Door.findById(doorId)
   if (!door) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const sessionUser = session.user as { id: string; role: string; name?: string }
+  const sessionUser = session.user as { id: string; role: string; name?: string; email?: string }
 
   if (sessionUser.role !== 'admin') {
     const user = await User.findById(sessionUser.id)
@@ -109,8 +119,63 @@ export async function PUT(req: Request, { params }: Params) {
       },
     }).catch((err) => console.error('[portal-log] lock-rule audit write failed:', err))
 
+    const durationText = formatIntervalMinutes(interval)
+    const auditMessage =
+      type === 'custom' && durationText
+        ? `${door.name} temporary unlock set for ${durationText}`
+        : type === 'keep_unlock'
+        ? `${door.name} set to always unlocked`
+        : type === 'keep_lock'
+        ? `${door.name} lockdown started`
+        : type === 'lock_early'
+        ? `${door.name} schedule ended early`
+        : type === 'reset'
+        ? `${door.name} rule reset`
+        : `${door.name} rule set to ${type}`
+
+    await writeAudit({
+      req,
+      tenantId: door.tenantId.toString(),
+      doorId: door._id.toString(),
+      actorUserId: sessionUser.id,
+      actorName: sessionUser.name ?? 'Portal User',
+      actorEmail: sessionUser.email,
+      actorRole: sessionUser.role,
+      action: `door.lock_rule.${type}`,
+      entityType: 'door',
+      entityId: door._id.toString(),
+      outcome: 'success',
+      message: auditMessage,
+      metadata: {
+        doorName: door.name,
+        unifiDoorId: door.unifiDoorId,
+        interval: typeof interval === 'number' ? interval : null,
+        intervalLabel: durationText,
+        previousType: currentRule?.type ?? null,
+      },
+    })
+
     return NextResponse.json({ success: true })
   } catch (err) {
+    await writeAudit({
+      req,
+      tenantId: door.tenantId.toString(),
+      doorId: door._id.toString(),
+      actorUserId: sessionUser.id,
+      actorName: sessionUser.name ?? 'Portal User',
+      actorEmail: sessionUser.email,
+      actorRole: sessionUser.role,
+      action: `door.lock_rule.${type}`,
+      entityType: 'door',
+      entityId: door._id.toString(),
+      outcome: 'failure',
+      message: (err as Error).message,
+      metadata: {
+        doorName: door.name,
+        unifiDoorId: door.unifiDoorId,
+        interval: typeof interval === 'number' ? interval : null,
+      },
+    }).catch(() => undefined)
     return NextResponse.json(
       { error: `Controller error: ${(err as Error).message}` },
       { status: 502 }

@@ -53,7 +53,7 @@ function ConfirmEmailForm() {
 
 export default function ConfirmEmailPage() {
   return (
-    <Suspense>
+    <Suspense fallback={null}>
       <ConfirmEmailForm />
     </Suspense>
   )

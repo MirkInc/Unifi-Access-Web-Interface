@@ -7,6 +7,7 @@ export interface IDoorPermission {
   canTempLock: boolean
   canEndTempLock: boolean
   canViewLogs: boolean
+  canViewAnalytics: boolean
 }
 
 export interface ITenantAccess {
@@ -34,6 +35,7 @@ const DoorPermissionSchema = new Schema<IDoorPermission>(
     canTempLock: { type: Boolean, default: false },
     canEndTempLock: { type: Boolean, default: false },
     canViewLogs: { type: Boolean, default: false },
+    canViewAnalytics: { type: Boolean, default: false },
   },
   { _id: false }
 )

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faDoorOpen, faDoorClosed, faLock, faLockOpen, faBuildingLock, faBuilding } from '@fortawesome/free-solid-svg-icons'
 import { formatTime, getInitials, isAccessDenied } from '@/lib/utils'
+import { unlockMethodLabel, denialReason as classifyDenialReason, actorLabel as classifyActorLabel } from '@/lib/accessLogClassification'
 import type { UnifiLogEntry } from '@/types'
 
 type LogFilter = 'access' | 'door_status' | 'door_position'
@@ -197,68 +198,15 @@ export function ActivityLogTable({
   }
 
   function unlockMethod(log: UnifiLogEntry): string {
-    const key = (log.event?.log_key ?? '').toLowerCase()
-    const msg = log.event?.display_message ?? ''
-    const provider = (log.authentication?.credential_provider ?? '').toLowerCase()
-
-    // Extract parenthetical code from display_message e.g. "Access Granted (REN)"
-    const codeMatch = msg.match(/\(([^)]+)\)/)
-    const code = (codeMatch?.[1] ?? '').toLowerCase()
-
-    // Check credential_provider first (most reliable)
-    if (provider === 'rex' || provider === 'motion' || code === 'ren' || code === 'rex' || key.includes('rex') || key.includes('motion')) return 'Motion Sensor'
-    if (provider === 'remote' || key.includes('remote') || code === 'remote') return 'Remote'
-    if (provider === 'pin' || key.includes('pin') || code === 'pin') return 'PIN'
-    if (provider === 'nfc' || provider === 'card' || key.includes('nfc') || key.includes('card') || code === 'nfc') return 'Card / NFC'
-    if (provider === 'ble' || provider === 'mobile' || key.includes('mobile') || key.includes('ble') || code === 'ble') return 'Mobile'
-    if (provider === 'fingerprint' || key.includes('fingerprint') || key.includes('biometric') || code === 'fp') return 'Biometric'
-    if (provider === 'button' || key.includes('button') || code === 'button') return 'Button'
-
-    // Fall back to the raw display message or code if we have one
-    if (codeMatch?.[1]) return codeMatch[1]
-    return msg || 'Unknown'
+    return unlockMethodLabel(log)
   }
 
   function denialReason(log: UnifiLogEntry): string {
-    const key = (log.event?.log_key ?? '').toLowerCase()
-    const msg = log.event?.display_message ?? ''
-    const codeMatch = msg.match(/\(([^)]+)\)/)
-    const code = (codeMatch?.[1] ?? '').toLowerCase()
-
-    // These are credential types, not denial reasons — ignore them
-    const credentialCodes = new Set(['nfc', 'card', 'ble', 'mobile', 'pin', 'fp', 'fingerprint', 'rex', 'ren', 'remote', 'button'])
-
-    // Check log_key patterns first (most reliable source)
-    if (key.includes('schedule')) return 'Outside schedule'
-    if (key.includes('block')) return 'User blocked'
-    if (key.includes('expir')) return 'Credential expired'
-    if (key.includes('antipassback') || key.includes('apb')) return 'Antipassback'
-    if (key.includes('no_access') || key.includes('not_allow')) return 'No access'
-    if (key.includes('invalid')) return 'Invalid credential'
-    if (key.includes('visitor')) return 'Visitor expired'
-    if (key.includes('tailgate')) return 'Tailgating'
-    if (key.includes('incomplete') || key.includes('scan_fail')) return 'Incomplete scan'
-
-    // Check display_message parenthetical only if it's a real reason code, not a credential type
-    if (codeMatch?.[1] && !credentialCodes.has(code)) return codeMatch[1]
-
-    // Extract suffix after 'denied' in log_key, filtering out credential-type suffixes
-    const afterDenied = key.match(/denied[_.](.+)$/)?.[1]?.replace(/_/g, ' ')
-    if (afterDenied && !credentialCodes.has(afterDenied.replace(/ /g, ''))) return afterDenied
-
-    return 'No access'
+    return classifyDenialReason(log)
   }
 
   function actorLabel(log: UnifiLogEntry): string {
-    const rawName = log.actor?.display_name
-    if (rawName && rawName !== 'N/A') return rawName
-
-    // No named actor — infer from method
-    const method = unlockMethod(log)
-    if (method === 'Motion Sensor') return 'Motion Sensor'
-    if (method === 'Remote') return 'Remote'
-    if (method === 'Button') return 'Button'
-    return 'System'
+    return classifyActorLabel(log)
   }
 
   // Group logs by date

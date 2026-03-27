@@ -7,6 +7,7 @@ import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
 import { sendPasswordResetEmail } from '@/lib/mail'
 import { generateToken } from '@/lib/utils'
+import { writeAudit } from '@/lib/audit'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
   if (!session?.user || (session.user as { role?: string }).role !== 'admin') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
   const { email, name, role = 'user', password, sendInvite = false } = body
@@ -68,5 +70,18 @@ export async function POST(req: Request) {
   }
 
   const { passwordHash: _ph, ...userObj } = user.toObject()
+  await writeAudit({
+    req,
+    actorUserId: sessionUser.id,
+    actorName: sessionUser.name ?? 'Admin',
+    actorEmail: sessionUser.email,
+    actorRole: sessionUser.role,
+    action: 'user.create',
+    entityType: 'user',
+    entityId: user._id.toString(),
+    outcome: 'success',
+    message: `Created user ${user.email}`,
+    metadata: { role, sendInvite },
+  })
   return NextResponse.json(userObj, { status: 201 })
 }

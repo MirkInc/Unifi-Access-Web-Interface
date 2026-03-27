@@ -9,6 +9,7 @@ import User from '@/models/User'
 import WebhookEvent from '@/models/WebhookEvent'
 import { clientForTenant } from '@/lib/unifi'
 import type { UnifiLogEntry } from '@/types'
+import { actorLabel, methodCodeForExport } from '@/lib/accessLogClassification'
 
 type ExportFilter = 'access' | 'door_position' | 'door_status'
 type DoorStatusType =
@@ -194,34 +195,6 @@ export async function GET(req: Request) {
       ? allLogs.filter((l) => l.event?.object_id === unifiDoorId)
       : allLogs
 
-    function methodCode(log: UnifiLogEntry): string {
-      const key = (log.event?.log_key ?? '').toLowerCase()
-      const msg = (log.event?.display_message ?? '').toLowerCase()
-      const provider = (log.authentication?.credential_provider ?? '').toLowerCase()
-      const paren = (log.event?.display_message ?? '').match(/\(([^)]+)\)/)?.[1]?.trim().toUpperCase()
-
-      if (paren) return paren
-      if (provider === 'rex' || provider === 'motion' || key.includes('rex') || key.includes('motion')) return 'REN'
-      if (provider === 'remote' || key.includes('remote') || msg.includes('remote')) return 'REMOTE'
-      if (provider === 'pin' || key.includes('pin')) return 'PIN'
-      if (provider === 'nfc' || provider === 'card' || key.includes('nfc') || key.includes('card')) return 'NFC'
-      if (provider === 'ble' || provider === 'mobile' || key.includes('mobile') || key.includes('ble')) return 'BLE'
-      if (provider === 'fingerprint' || key.includes('fingerprint') || key.includes('biometric')) return 'FP'
-      if (provider === 'button' || key.includes('button')) return 'BUTTON'
-      return 'UNKNOWN'
-    }
-
-    function actorLabel(log: UnifiLogEntry): string {
-      const raw = log.actor?.display_name?.trim()
-      if (raw && raw !== 'N/A') return raw
-
-      const code = methodCode(log)
-      if (code === 'REN' || code === 'REX') return 'Motion Sensor'
-      if (code === 'REMOTE') return 'Remote'
-      if (code === 'BUTTON') return 'Button'
-      return 'System'
-    }
-
     function resultText(log: UnifiLogEntry): string {
       const msg = (log.event?.display_message ?? log.event?.type ?? '').trim()
       // Drop trailing credential code e.g. "Access Granted (NFC)" -> "Access Granted"
@@ -232,7 +205,7 @@ export async function GET(req: Request) {
       Time: eventTime(log.event?.timestamp),
       User: actorLabel(log),
       Door: log.event?.object_name ?? '',
-      Method: methodCode(log),
+      Method: methodCodeForExport(log),
       Result: resultText(log),
     }))
 

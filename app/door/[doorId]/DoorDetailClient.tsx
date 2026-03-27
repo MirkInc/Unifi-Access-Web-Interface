@@ -2,11 +2,13 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
+import { ChevronDown } from 'lucide-react'
 import { DoorControl } from '@/components/DoorControl'
 import { ActivityChart, type RangeType } from '@/components/ActivityChart'
 import { ActivityLogTable } from '@/components/ActivityLogTable'
 import { cn } from '@/lib/utils'
 import { DateRangePicker } from '@/components/DateRangePicker'
+import { UnlockScheduleCard } from './UnlockScheduleCard'
 import type { DoorStatus, UnifiLogEntry } from '@/types'
 
 interface Props {
@@ -17,11 +19,15 @@ interface Props {
     canTempLock: boolean
     canEndTempLock: boolean
     canViewLogs: boolean
+    canViewAnalytics: boolean
   }
   controllerError: string | null
   timezone?: string
   doorName: string
   backHref: string
+  scheduleId?: string
+  scheduleName?: string
+  analyticsHref?: string
 }
 
 const QUICK_RANGES: { label: string; value: RangeType }[] = [
@@ -43,9 +49,9 @@ function formatRangeLabel(since: number, until: number, range: RangeType): strin
     const d = new Date(until * 1000)
     const today = new Date()
     if (d.toDateString() === today.toDateString()) return 'Last 24 hours'
-    return fmt(since) + ' – ' + fmt(until)
+    return fmt(since) + ' - ' + fmt(until)
   }
-  return fmt(since) + ' – ' + fmt(until)
+  return fmt(since) + ' - ' + fmt(until)
 }
 
 function computeWindow(range: RangeType, customStart: string, customEnd: string): { since: number; until: number } {
@@ -64,7 +70,34 @@ function computeWindow(range: RangeType, customStart: string, customEnd: string)
   return { since: now - offsets[range], until: now }
 }
 
-export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref }: Props) {
+function useSessionBoolean(key: string, defaultValue: boolean) {
+  const [value, setValue] = useState(defaultValue)
+  const [hydrated, setHydrated] = useState(false)
+
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(key)
+      if (stored !== null) setValue(stored === '1')
+    } catch {
+      // ignore
+    } finally {
+      setHydrated(true)
+    }
+  }, [key])
+
+  useEffect(() => {
+    if (!hydrated) return
+    try {
+      window.sessionStorage.setItem(key, value ? '1' : '0')
+    } catch {
+      // ignore
+    }
+  }, [key, value, hydrated])
+
+  return [value, setValue] as const
+}
+
+export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref, scheduleId, scheduleName, analyticsHref }: Props) {
   const [door, setDoor] = useState(initialDoor)
   const [refreshKey, setRefreshKey] = useState(0)
   const controlRef = useRef<HTMLDivElement>(null)
@@ -73,6 +106,10 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const statusQueuedRef = useRef(false)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastStatusFetchAtRef = useRef(0)
+
+  const [scheduleOpen, setScheduleOpen] = useSessionBoolean('door.section.unlockSchedule', true)
+  const [chartOpen, setChartOpen] = useSessionBoolean('door.section.activityChart', true)
+  const [logOpen, setLogOpen] = useSessionBoolean('door.section.activityLog', true)
 
   useEffect(() => {
     function onScroll() {
@@ -85,12 +122,11 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
-  // Range selector state
   const [range, setRange] = useState<RangeType>('1D')
   const [customStart, setCustomStart] = useState(() => toDateInput(Math.floor(Date.now() / 1000) - 7 * 86400))
   const [customEnd, setCustomEnd] = useState(() => toDateInput(Math.floor(Date.now() / 1000)))
   const [sharedLogs, setSharedLogs] = useState<UnifiLogEntry[]>([])
-  const [sharedLogsLoading, setSharedLogsLoading] = useState(true)
+  const [sharedLogsLoading, setSharedLogsLoading] = useState(false)
 
   const { since, until } = useMemo(
     () => computeWindow(range, customStart, customEnd),
@@ -98,8 +134,14 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   )
   const rangeLabel = formatRangeLabel(since, until, range)
   const logPageSize = range === '1D' ? 500 : range === '1W' ? 1000 : range === '1M' ? 2000 : 3000
+  const shouldLoadSharedLogs = permissions.canViewLogs && (chartOpen || logOpen)
 
   useEffect(() => {
+    if (!shouldLoadSharedLogs) {
+      setSharedLogsLoading(false)
+      return
+    }
+
     let cancelled = false
 
     async function fetchSharedLogs() {
@@ -125,7 +167,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
 
     fetchSharedLogs()
     return () => { cancelled = true }
-  }, [door.tenantId, door.id, since, until, logPageSize, refreshKey])
+  }, [door.tenantId, door.id, since, until, logPageSize, refreshKey, shouldLoadSharedLogs])
 
   const fetchStatusNow = useCallback(async () => {
     if (statusInFlightRef.current) {
@@ -136,9 +178,18 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
     statusInFlightRef.current = true
     try {
       const res = await fetch(`/api/doors/${door.id}/status`)
-      if (res.ok) setDoor(await res.json())
-    } catch { /* ignore */ }
-    finally {
+      if (res.ok) {
+        const latest = await res.json()
+        setDoor((prev) => ({
+          ...prev,
+          ...latest,
+          firstPersonInRequired:
+            latest.firstPersonInRequired ?? prev.firstPersonInRequired,
+        }))
+      }
+    } catch {
+      // ignore
+    } finally {
       statusInFlightRef.current = false
       lastStatusFetchAtRef.current = Date.now()
 
@@ -180,18 +231,15 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   }, [fetchStatusNow])
 
   const refresh = useCallback(async () => {
-    // Small delay to let UniFi apply the change before we query it back
     await new Promise((r) => setTimeout(r, 400))
     await fetchStatusNow()
     setRefreshKey((k) => k + 1)
-    // Second pass in case controller was still processing
     setTimeout(async () => {
       await fetchStatusNow()
       setRefreshKey((k) => k + 1)
     }, 1500)
   }, [fetchStatusNow])
 
-  // Immediately correct any stale server-rendered state on mount
   useEffect(() => {
     queueStatusRefresh(true)
   }, [queueStatusRefresh])
@@ -226,157 +274,210 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
 
   return (
     <>
-    {/* Door sub-header */}
-    <div className="bg-white border-b border-gray-100 sticky top-14 z-30">
-      <div className="max-w-4xl mx-auto px-4 h-12 flex items-center gap-3">
-        <Link href={backHref} className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0">
-          <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
-        </Link>
-        <h1 className="font-bold text-gray-900 text-base">{doorName}</h1>
-        {door.lockStatus && (
-          <span
-            ref={badgeRef}
-            style={{ opacity: 0, transition: 'opacity 0.15s' }}
-            className={cn(
-              'text-xs font-medium px-2 py-0.5 rounded-full',
-              isUnlocked ? 'bg-[#006FFF]/10 text-[#006FFF]' : 'bg-gray-100 text-gray-600'
-            )}
-          >
-            {isUnlocked ? 'Unlocked' : 'Locked'}
-          </span>
-        )}
-      </div>
-    </div>
-    <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-      {controllerError && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-3 rounded-xl">
-          <strong>Controller unreachable:</strong> {controllerError}
-        </div>
-      )}
-
-      <div ref={controlRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} />
-
-        <div className="card p-5 space-y-3">
-          <h2 className="font-semibold text-gray-900">Door Status</h2>
-          {isUnauthorizedOpening && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-              Unauthorized Opening
-            </div>
+      <div className="bg-white border-b border-gray-100 sticky top-14 z-30">
+        <div className="max-w-4xl mx-auto px-4 h-12 flex items-center gap-3">
+          <Link href={backHref} className="text-gray-400 hover:text-gray-700 transition-colors flex-shrink-0">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+              <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+          </Link>
+          <h1 className="font-bold text-gray-900 text-base">{doorName}</h1>
+          {door.lockStatus && (
+            <span
+              ref={badgeRef}
+              style={{ opacity: 0, transition: 'opacity 0.15s' }}
+              className={cn(
+                'text-xs font-medium px-2 py-0.5 rounded-full',
+                isUnlocked ? 'bg-[#006FFF]/10 text-[#006FFF]' : 'bg-gray-100 text-gray-600'
+              )}
+            >
+              {isUnlocked ? 'Unlocked' : 'Locked'}
+            </span>
           )}
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span className="text-gray-500">Lock</span>
-              <span className={
-                isUnauthorizedOpening
-                  ? 'text-red-600 font-medium'
-                  : door.lockStatus === 'unlock'
-                  ? 'text-[#006FFF] font-medium'
-                  : 'text-gray-700'
-              }>
-                {door.lockStatus === 'unlock' ? 'Unlocked' : door.lockStatus === 'lock' ? 'Locked' : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Position</span>
-              <span className={
-                isUnauthorizedOpening
-                  ? 'text-red-600 font-medium'
-                  : door.positionStatus === 'open'
-                  ? 'text-amber-500 font-medium'
-                  : 'text-gray-700'
-              }>
-                {door.positionStatus === 'open' ? 'Open' : door.positionStatus === 'close' ? 'Closed' : '—'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-500">Controller</span>
-              <span className={door.isOnline ? 'text-green-500' : 'text-gray-400'}>
-                {door.isOnline ? 'Online' : 'Offline'}
-              </span>
-            </div>
-            {door.lockRule && (
-              <div className="flex justify-between">
-                <span className="text-gray-500">Active Rule</span>
-                <span className="text-gray-700 capitalize">{door.lockRule.type.replace('_', ' ')}</span>
+          <div className="ml-auto flex items-center gap-2">
+            {permissions.canViewAnalytics && analyticsHref && (
+              <Link
+                href={analyticsHref}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#006FFF] text-white text-xs font-semibold px-3 py-1.5 shadow-sm hover:bg-[#0057cc] focus:outline-none focus:ring-2 focus:ring-[#006FFF]/30 transition-colors"
+              >
+                <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                  <path d="M3 4.75A1.75 1.75 0 0 1 4.75 3h10.5A1.75 1.75 0 0 1 17 4.75v10.5A1.75 1.75 0 0 1 15.25 17H4.75A1.75 1.75 0 0 1 3 15.25V4.75ZM6 13.25a.75.75 0 1 0 1.5 0V11a.75.75 0 0 0-1.5 0v2.25Zm3.25 0a.75.75 0 1 0 1.5 0V8.75a.75.75 0 0 0-1.5 0v4.5Zm3.25 0a.75.75 0 1 0 1.5 0V6.5a.75.75 0 0 0-1.5 0v6.75Z" />
+                </svg>
+                Analytics
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        {controllerError && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm px-4 py-3 rounded-xl">
+            <strong>Controller unreachable:</strong> {controllerError}
+          </div>
+        )}
+
+        <div ref={controlRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} />
+
+          <div className="card p-5 space-y-3">
+            <h2 className="font-semibold text-gray-900">Door Status</h2>
+            {isUnauthorizedOpening && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                Unauthorized Opening
               </div>
             )}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Lock</span>
+                <span className={
+                  isUnauthorizedOpening
+                    ? 'text-red-600 font-medium'
+                    : door.lockStatus === 'unlock'
+                    ? 'text-[#006FFF] font-medium'
+                    : 'text-gray-700'
+                }>
+                  {door.lockStatus === 'unlock' ? 'Unlocked' : door.lockStatus === 'lock' ? 'Locked' : '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Position</span>
+                <span className={
+                  isUnauthorizedOpening
+                    ? 'text-red-600 font-medium'
+                    : door.positionStatus === 'open'
+                    ? 'text-amber-500 font-medium'
+                    : 'text-gray-700'
+                }>
+                  {door.positionStatus === 'open' ? 'Open' : door.positionStatus === 'close' ? 'Closed' : '-'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Controller</span>
+                <span className={door.isOnline ? 'text-green-500' : 'text-gray-400'}>
+                  {door.isOnline ? 'Online' : 'Offline'}
+                </span>
+              </div>
+              {door.lockRule && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Active Rule</span>
+                  <span className="text-gray-700 capitalize">{door.lockRule.type.replace('_', ' ')}</span>
+                </div>
+              )}
+              {door.firstPersonInRequired && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500">First Person In</span>
+                  <span className="text-amber-700 font-medium">Required</span>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {permissions.canViewLogs && (
-        <>
-          {/* Range selector */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex bg-white border border-gray-200 rounded-xl p-1 gap-0.5">
-              {QUICK_RANGES.map((r) => (
-                <button
-                  key={r.value}
-                  onClick={() => setRange(r.value)}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                    range === r.value
-                      ? 'bg-[#006FFF] text-white shadow-sm'
-                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                  )}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
+        {(scheduleId || scheduleName) && (
+          <UnlockScheduleCard
+            doorId={door.id}
+            scheduleId={scheduleId}
+            fallbackName={scheduleName}
+            firstPersonInRequired={door.firstPersonInRequired === true}
+            lockStatus={door.lockStatus}
+            open={scheduleOpen}
+            onToggle={() => setScheduleOpen((v) => !v)}
+          />
+        )}
 
-            {range === 'custom' && (
-              <DateRangePicker
-                start={customStart}
-                end={customEnd}
-                onStartChange={setCustomStart}
-                onEndChange={setCustomEnd}
-                max={toDateInput(Math.floor(Date.now() / 1000))}
-              />
+        {permissions.canViewLogs && (
+          <>
+            {(chartOpen || logOpen) && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex bg-white border border-gray-200 rounded-xl p-1 gap-0.5">
+                  {QUICK_RANGES.map((r) => (
+                    <button
+                      key={r.value}
+                      onClick={() => setRange(r.value)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                        range === r.value
+                          ? 'bg-[#006FFF] text-white shadow-sm'
+                          : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
+                      )}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+
+                {range === 'custom' && (
+                  <DateRangePicker
+                    start={customStart}
+                    end={customEnd}
+                    onStartChange={setCustomStart}
+                    onEndChange={setCustomEnd}
+                    max={toDateInput(Math.floor(Date.now() / 1000))}
+                  />
+                )}
+              </div>
             )}
-          </div>
 
-          {/* Chart */}
-          <div className="card p-5">
-            <ActivityChart
-              doorId={door.id}
-              tenantId={door.tenantId}
-              since={since}
-              until={until}
-              rangeType={range}
-              rangeLabel={rangeLabel}
-              refreshTrigger={refreshKey}
-              pageSize={logPageSize}
-              externalLogs={sharedLogs}
-              externalLoading={sharedLogsLoading}
-            />
-          </div>
-
-          {/* Log */}
-          <div className="card p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="font-semibold text-gray-900">Activity Log</h2>
-              <p className="text-xs text-gray-400">{rangeLabel}</p>
+            <div className="card p-5">
+              <button
+                type="button"
+                onClick={() => setChartOpen((v) => !v)}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <h2 className="font-semibold text-gray-900">Activity Chart</h2>
+                <ChevronDown className={cn('w-4 h-4 text-gray-500 transition-transform', chartOpen ? 'rotate-180' : '')} />
+              </button>
+              {chartOpen && (
+                <div className="mt-4">
+                  <ActivityChart
+                    doorId={door.id}
+                    tenantId={door.tenantId}
+                    since={since}
+                    until={until}
+                    rangeType={range}
+                    rangeLabel={rangeLabel}
+                    refreshTrigger={refreshKey}
+                    pageSize={logPageSize}
+                    externalLogs={sharedLogs}
+                    externalLoading={sharedLogsLoading}
+                  />
+                </div>
+              )}
             </div>
-            <ActivityLogTable
-              tenantId={door.tenantId}
-              doorId={door.id}
-              showExport
-              since={since}
-              until={until}
-              pageSize={logPageSize}
-              timezone={timezone}
-              refreshTrigger={refreshKey}
-              accessLogsOverride={sharedLogs}
-              accessLogsLoadingOverride={sharedLogsLoading}
-            />
-          </div>
-        </>
-      )}
-    </main>
+
+            <div className="card p-5">
+              <button
+                type="button"
+                onClick={() => setLogOpen((v) => !v)}
+                className="w-full flex items-center justify-between text-left"
+              >
+                <h2 className="font-semibold text-gray-900">Activity Log</h2>
+                <div className="flex items-center gap-3">
+                  <p className="text-xs text-gray-400">{rangeLabel}</p>
+                  <ChevronDown className={cn('w-4 h-4 text-gray-500 transition-transform', logOpen ? 'rotate-180' : '')} />
+                </div>
+              </button>
+              {logOpen && (
+                <div className="mt-4">
+                  <ActivityLogTable
+                    tenantId={door.tenantId}
+                    doorId={door.id}
+                    showExport
+                    since={since}
+                    until={until}
+                    pageSize={logPageSize}
+                    timezone={timezone}
+                    refreshTrigger={refreshKey}
+                    accessLogsOverride={sharedLogs}
+                    accessLogsLoadingOverride={sharedLogsLoading}
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
     </>
   )
 }

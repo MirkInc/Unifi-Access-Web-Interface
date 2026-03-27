@@ -114,7 +114,7 @@ export function SiteManagerClient({ consoles, tenants, currentTenantId, userName
               return (
                 <Link
                   key={console.id}
-                  href={`/dashboard?tenantId=${console.id}`}
+                  href={`/${console.id}`}
                   className={cn(
                     'card text-left p-4 hover:shadow-md transition-shadow',
                     hasWarning && 'ring-2 ring-red-500',

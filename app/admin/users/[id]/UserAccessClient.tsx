@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Door { _id: string; name: string }
@@ -15,6 +16,7 @@ type DoorPerms = {
   canTempLock: boolean
   canEndTempLock: boolean
   canViewLogs: boolean
+  canViewAnalytics: boolean
 }
 
 const PERM_LABELS: { key: keyof DoorPerms; label: string; desc: string }[] = [
@@ -23,11 +25,12 @@ const PERM_LABELS: { key: keyof DoorPerms; label: string; desc: string }[] = [
   { key: 'canTempLock', label: 'Lockdown / Timed Unlock', desc: 'Initiate lockdown or set a timed unlock' },
   { key: 'canEndTempLock', label: 'End Lockdown / Rule', desc: 'Cancel an active lockdown or timed rule' },
   { key: 'canViewLogs', label: 'View Logs', desc: 'View and export activity logs' },
+  { key: 'canViewAnalytics', label: 'Analytics', desc: 'View door analytics page and analytics data' },
 ]
 
 const DEFAULT_PERMS: DoorPerms = {
   canUnlock: false, canEndLockSchedule: false,
-  canTempLock: false, canEndTempLock: false, canViewLogs: false,
+  canTempLock: false, canEndTempLock: false, canViewLogs: false, canViewAnalytics: false,
 }
 
 interface Props {
@@ -45,6 +48,7 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
   const [profileEmail, setProfileEmail] = useState(user.email)
   const [profileRole, setProfileRole] = useState(user.role)
   const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
 
   // Access state
   const [access, setAccess] = useState<Record<string, Record<string, DoorPerms>>>(initialAccess)
@@ -200,7 +204,25 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
           </div>
           <div>
             <label className="label">New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
-            <input className="input" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min. 8 characters" minLength={8} autoComplete="new-password" />
+            <div className="relative">
+              <input
+                className="input pr-10"
+                type={showNewPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Min. 8 characters"
+                minLength={8}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600"
+                aria-label={showNewPassword ? 'Hide new password' : 'Show new password'}
+              >
+                {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

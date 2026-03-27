@@ -48,7 +48,7 @@ export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
 
   return (
     <Link
-      href={`/door/${door.id}`}
+      href={`/${door.tenantId}/${door.id}`}
       className={cn(
         'card hover:shadow-md transition-shadow text-left w-full p-4 flex flex-col',
         isLockdown && 'ring-2 ring-amber-500',
