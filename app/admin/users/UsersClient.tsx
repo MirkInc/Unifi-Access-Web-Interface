@@ -228,6 +228,7 @@ export function UsersClient({ users, tenants: _tenants, portalUrls }: Props) {
                 <th className="px-4 py-3">User</th>
                 <th className="px-4 py-3">Role</th>
                 <th className="px-4 py-3">Sites</th>
+                <th className="px-4 py-3">Preferred URL</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -265,6 +266,13 @@ export function UsersClient({ users, tenants: _tenants, portalUrls }: Props) {
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {u.tenantCount} site{u.tenantCount !== 1 ? 's' : ''}
+                  </td>
+                  <td className="px-4 py-3 text-gray-500">
+                    {u.preferredPortalUrl ? (
+                      <span className="break-all">{u.preferredPortalUrl}</span>
+                    ) : (
+                      <span className="text-gray-400">Default (current domain)</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-2">
