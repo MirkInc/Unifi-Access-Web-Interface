@@ -27,18 +27,20 @@ export function AdminLogsClient({ tenants }: Props) {
       <div className="card p-5">
         {/* Filters */}
         <div className="flex flex-wrap gap-3 mb-5">
-          <div>
-            <label className="label">Site</label>
-            <select
-              className="input w-48"
-              value={selectedTenant}
-              onChange={(e) => setSelectedTenant(e.target.value)}
-            >
-              {tenants.map((t) => (
-                <option key={t._id} value={t._id}>{t.name}</option>
-              ))}
-            </select>
-          </div>
+          {tenants.length > 1 && (
+            <div>
+              <label className="label">Site</label>
+              <select
+                className="input w-48"
+                value={selectedTenant}
+                onChange={(e) => setSelectedTenant(e.target.value)}
+              >
+                {tenants.map((t) => (
+                  <option key={t._id} value={t._id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="label">From</label>
             <input

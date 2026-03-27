@@ -6,28 +6,34 @@ import * as Select from '@radix-ui/react-select'
 import { Check, ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-const links = [
-  { href: '/admin/tenants', label: 'Sites' },
-  { href: '/admin/users', label: 'Users' },
-  { href: '/admin/health', label: 'Health' },
-  { href: '/admin/preferences', label: 'Preferences' },
-  { href: '/admin/audit', label: 'Audit Logs' },
+const sections = [
+  { segment: 'doors', label: 'Doors' },
+  { segment: 'schedules', label: 'Schedules' },
+  { segment: 'analytics', label: 'Analytics' },
+  { segment: 'logs', label: 'Activity Logs' },
+  { segment: 'preferences', label: 'Preferences' },
 ]
 
-export function AdminNav() {
+export function SiteAdminNav({ tenantId }: { tenantId: string }) {
   const pathname = usePathname()
   const router = useRouter()
+
+  const links = sections.map((s) => ({
+    href: `/admin/tenants/${tenantId}/${s.segment}`,
+    label: s.label,
+  }))
+
   const activeHref =
     links.find((l) => pathname === l.href || pathname.startsWith(`${l.href}/`))?.href ??
-    '/admin/tenants'
+    links[0].href
 
   return (
     <>
-      <div className="lg:hidden ml-2">
+      <div className="sm:hidden">
         <Select.Root value={activeHref} onValueChange={(v) => router.push(v)}>
           <Select.Trigger
-            aria-label="Admin section"
-            className="flex items-center gap-2 pl-3 pr-2.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006FFF]/20 focus:border-[#006FFF] transition-colors cursor-pointer min-w-[170px]"
+            aria-label="Site section"
+            className="flex items-center gap-2 pl-3 pr-2.5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006FFF]/20 focus:border-[#006FFF] transition-colors cursor-pointer min-w-[160px]"
           >
             <Select.Value />
             <Select.Icon className="ml-auto">
@@ -55,14 +61,14 @@ export function AdminNav() {
         </Select.Root>
       </div>
 
-      <nav className="hidden lg:flex items-center gap-1 ml-4">
+      <nav className="hidden sm:flex items-center gap-1">
         {links.map((l) => (
           <Link
             key={l.href}
             href={l.href}
             className={cn(
               'px-3 py-1.5 rounded-lg text-sm transition-colors',
-              pathname.startsWith(l.href)
+              pathname === l.href || pathname.startsWith(`${l.href}/`)
                 ? 'bg-blue-50 text-[#006FFF] font-medium'
                 : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
             )}

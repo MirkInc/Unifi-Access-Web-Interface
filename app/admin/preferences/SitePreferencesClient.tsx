@@ -15,11 +15,6 @@ interface Props {
 }
 
 export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
-  const [portalUrlsText, setPortalUrlsText] = useState('')
-  const [portalSaving, setPortalSaving] = useState(false)
-  const [portalSaved, setPortalSaved] = useState(false)
-  const [portalError, setPortalError] = useState<string | null>(null)
-
   const [tenantId, setTenantId] = useState(initialTenantId)
   const [hideUnlockedTime, setHideUnlockedTime] = useState(true)
   const [hideUnauthorizedOpenTime, setHideUnauthorizedOpenTime] = useState(true)
@@ -27,23 +22,6 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    async function loadPortalUrls() {
-      try {
-        const res = await fetch('/api/admin/portal-urls', { cache: 'no-store' })
-        if (!res.ok) return
-        const data = await res.json() as { portalUrls?: string[] }
-        if (cancelled) return
-        setPortalUrlsText((data.portalUrls ?? []).join('\n'))
-      } catch {
-        // no-op
-      }
-    }
-    void loadPortalUrls()
-    return () => { cancelled = true }
-  }, [])
 
   useEffect(() => {
     if (!tenantId) return
@@ -81,16 +59,9 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
       const res = await fetch('/api/admin/site-preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tenantId,
-          hideUnlockedTime,
-          hideUnauthorizedOpenTime,
-        }),
+        body: JSON.stringify({ tenantId, hideUnlockedTime, hideUnauthorizedOpenTime }),
       })
-      if (!res.ok) {
-        setError('Failed to save preferences')
-        return
-      }
+      if (!res.ok) { setError('Failed to save preferences'); return }
       setSaved(true)
       window.setTimeout(() => setSaved(false), 1500)
     } catch {
@@ -100,68 +71,9 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
     }
   }
 
-  async function onSavePortalUrls() {
-    setPortalSaving(true)
-    setPortalSaved(false)
-    setPortalError(null)
-    try {
-      const portalUrls = portalUrlsText
-        .split('\n')
-        .map((v) => v.trim())
-        .filter(Boolean)
-      const res = await fetch('/api/admin/portal-urls', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ portalUrls }),
-      })
-      if (!res.ok) {
-        setPortalError('Failed to save portal URLs')
-        return
-      }
-      const data = await res.json() as { portalUrls?: string[] }
-      setPortalUrlsText((data.portalUrls ?? []).join('\n'))
-      setPortalSaved(true)
-      window.setTimeout(() => setPortalSaved(false), 1500)
-    } catch {
-      setPortalError('Failed to save portal URLs')
-    } finally {
-      setPortalSaving(false)
-    }
-  }
-
   return (
-    <div className="space-y-5 max-w-3xl">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Site Preferences</h1>
-        <p className="text-gray-500 mt-1">Manage per-site feature visibility and behavior.</p>
-      </div>
-
-      <div className="card p-5 space-y-4">
-        <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-          <h2 className="font-semibold text-gray-900">Portal URL Setup</h2>
-          <p className="text-sm text-gray-500">
-            Configure allowed portal domains (one per line). User profiles can select from this list.
-          </p>
-          <textarea
-            className="input min-h-28 font-mono text-sm"
-            value={portalUrlsText}
-            onChange={(e) => setPortalUrlsText(e.target.value)}
-            placeholder={'https://access.plrei.com\nhttps://access.mirkinc.us'}
-          />
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              className="btn-primary disabled:opacity-50"
-              onClick={onSavePortalUrls}
-              disabled={portalSaving}
-            >
-              {portalSaving ? 'Saving...' : 'Save Portal URLs'}
-            </button>
-            {portalSaved && <span className="text-sm text-green-600 font-medium">Saved</span>}
-            {portalError && <span className="text-sm text-red-600">{portalError}</span>}
-          </div>
-        </div>
-
+    <div className="space-y-4 max-w-2xl">
+      {tenants.length > 1 && (
         <div>
           <label className="label">Site</label>
           <Select.Root value={tenantId || '__none'} onValueChange={(v) => setTenantId(v === '__none' ? '' : v)}>
@@ -183,33 +95,35 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
             </Select.Portal>
           </Select.Root>
         </div>
+      )}
 
-        <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+      <div className="card p-5 space-y-4">
+        <div>
           <h2 className="font-semibold text-gray-900">Analytics (Temporary Controls)</h2>
-          <p className="text-sm text-gray-500">Hide metrics that are still being refined.</p>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={hideUnlockedTime}
-              onChange={(e) => setHideUnlockedTime(e.target.checked)}
-              disabled={loading || saving}
-            />
-            <span className="text-sm text-gray-700">Hide “Estimated Time Unlocked” sections</span>
-          </label>
-
-          <label className="flex items-start gap-3">
-            <input
-              type="checkbox"
-              className="mt-1"
-              checked={hideUnauthorizedOpenTime}
-              onChange={(e) => setHideUnauthorizedOpenTime(e.target.checked)}
-              disabled={loading || saving}
-            />
-            <span className="text-sm text-gray-700">Hide “Unauthorized Open Time” sections</span>
-          </label>
+          <p className="text-sm text-gray-500 mt-1">Hide metrics that are still being refined.</p>
         </div>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hideUnlockedTime}
+            onChange={(e) => setHideUnlockedTime(e.target.checked)}
+            disabled={loading || saving}
+          />
+          <span className="text-sm text-gray-700">Hide &quot;Estimated Time Unlocked&quot; sections</span>
+        </label>
+
+        <label className="flex items-start gap-3">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={hideUnauthorizedOpenTime}
+            onChange={(e) => setHideUnauthorizedOpenTime(e.target.checked)}
+            disabled={loading || saving}
+          />
+          <span className="text-sm text-gray-700">Hide &quot;Unauthorized Open Time&quot; sections</span>
+        </label>
 
         <div className="flex items-center gap-3">
           <button
@@ -227,4 +141,3 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
     </div>
   )
 }
-
