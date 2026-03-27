@@ -29,12 +29,8 @@ export function formatDateTime(date: Date | number): string {
 }
 
 export function generateToken(length = 32): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-  let token = ''
-  for (let i = 0; i < length; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return token
+  const { randomBytes } = require('crypto') as typeof import('crypto')
+  return randomBytes(Math.ceil(length * 3 / 4)).toString('base64url').slice(0, length)
 }
 
 export function isAccessDenied(log: { event?: { log_key?: string; display_message?: string; result?: string } }): boolean {

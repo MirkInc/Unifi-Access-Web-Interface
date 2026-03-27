@@ -19,18 +19,15 @@ export const authOptions: NextAuthOptions = {
         await connectDB()
 
         if (credentials?.mfaLoginToken) {
-          const loginToken = await MfaLoginToken.findOne({
-            token: credentials.mfaLoginToken,
-            used: false,
-            expiresAt: { $gt: new Date() },
-          })
+          const loginToken = await MfaLoginToken.findOneAndUpdate(
+            { token: credentials.mfaLoginToken, used: false, expiresAt: { $gt: new Date() } },
+            { $set: { used: true } },
+            { new: true }
+          )
           if (!loginToken) return null
 
           const user = await User.findById(loginToken.userId)
           if (!user) return null
-
-          loginToken.used = true
-          await loginToken.save()
 
           return {
             id: user._id.toString(),
