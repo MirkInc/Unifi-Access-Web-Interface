@@ -7,7 +7,7 @@ import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
 import { generateToken } from '@/lib/utils'
-import { sendEmailChangeNotification, sendEmailConfirmation } from '@/lib/mail'
+import { resolvePortalUrl, sendEmailChangeNotification, sendEmailConfirmation } from '@/lib/mail'
 import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ id: string }> }
@@ -34,7 +34,7 @@ export async function PUT(req: Request, { params }: Params) {
   const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
-  const { name, email, role, password, tenantAccess } = body
+  const { name, email, role, password, tenantAccess, preferredPortalUrl } = body
 
   await connectDB()
 
@@ -49,6 +49,7 @@ export async function PUT(req: Request, { params }: Params) {
   if (name) update.name = name.trim()
   if (role) update.role = role
   if (tenantAccess !== undefined) update.tenantAccess = tenantAccess
+  if (preferredPortalUrl !== undefined) update.preferredPortalUrl = preferredPortalUrl?.trim() || null
   if (password) update.passwordHash = await bcrypt.hash(password, 10)
 
   // Email change — store as pending and send confirmation emails
@@ -71,9 +72,10 @@ export async function PUT(req: Request, { params }: Params) {
 
     // Send notifications (fire and forget — don't fail the update if email fails)
     const userName = (name?.trim()) || user.name
+    const preferredUrlForEmail = preferredPortalUrl?.trim() || user.preferredPortalUrl || null
     Promise.all([
       sendEmailChangeNotification(user.email, userName, newEmail),
-      sendEmailConfirmation(newEmail, userName, token),
+      sendEmailConfirmation(newEmail, userName, token, resolvePortalUrl({ preferredPortalUrl: preferredUrlForEmail, request: req })),
     ]).catch(console.error)
   }
 

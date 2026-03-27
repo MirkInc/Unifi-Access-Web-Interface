@@ -23,6 +23,7 @@ export interface IUser extends Document {
   tenantAccess: ITenantAccess[]
   isActive: boolean
   pendingEmail: string | null
+  preferredPortalUrl: string | null
   createdAt: Date
   updatedAt: Date
 }
@@ -57,6 +58,7 @@ const UserSchema = new Schema<IUser>(
     tenantAccess: { type: [TenantAccessSchema], default: [] },
     isActive: { type: Boolean, default: true },
     pendingEmail: { type: String, default: null },
+    preferredPortalUrl: { type: String, default: null, trim: true },
   },
   { timestamps: true }
 )

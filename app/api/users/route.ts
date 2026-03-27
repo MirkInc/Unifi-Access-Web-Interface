@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
-import { sendPasswordResetEmail } from '@/lib/mail'
+import { resolvePortalUrl, sendPasswordResetEmail } from '@/lib/mail'
 import { generateToken } from '@/lib/utils'
 import { writeAudit } from '@/lib/audit'
 
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
   const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
-  const { email, name, role = 'user', password, sendInvite = false } = body
+  const { email, name, role = 'user', password, sendInvite = false, preferredPortalUrl } = body
 
   if (!email || !name) {
     return NextResponse.json({ error: 'email and name are required' }, { status: 400 })
@@ -56,7 +56,14 @@ export async function POST(req: Request) {
     ? await bcrypt.hash(generateToken(24), 10)
     : await bcrypt.hash(password, 10)
 
-  const user = await User.create({ email, name, role, passwordHash, isActive: sendInvite ? false : true })
+  const user = await User.create({
+    email,
+    name,
+    role,
+    passwordHash,
+    isActive: sendInvite ? false : true,
+    preferredPortalUrl: preferredPortalUrl?.trim() || null,
+  })
 
   if (sendInvite) {
     const token = generateToken(48)
@@ -66,7 +73,12 @@ export async function POST(req: Request) {
       type: 'invite',
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
     })
-    await sendPasswordResetEmail(email, name, token)
+    await sendPasswordResetEmail(
+      email,
+      name,
+      token,
+      resolvePortalUrl({ preferredPortalUrl: user.preferredPortalUrl, request: req })
+    )
   }
 
   const { passwordHash: _ph, ...userObj } = user.toObject()

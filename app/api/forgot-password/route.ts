@@ -3,7 +3,7 @@ import crypto from 'crypto'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
-import { sendForgotPasswordEmail } from '@/lib/mail'
+import { resolvePortalUrl, sendForgotPasswordEmail } from '@/lib/mail'
 
 export async function POST(req: Request) {
   const { email } = await req.json()
@@ -28,7 +28,12 @@ export async function POST(req: Request) {
   })
 
   try {
-    await sendForgotPasswordEmail(user.email, user.name, token)
+    await sendForgotPasswordEmail(
+      user.email,
+      user.name,
+      token,
+      resolvePortalUrl({ preferredPortalUrl: user.preferredPortalUrl, request: req })
+    )
   } catch (err) {
     console.error('Failed to send forgot password email:', err)
   }

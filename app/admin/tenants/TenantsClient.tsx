@@ -53,7 +53,13 @@ function TenantForm({
 }: {
   initial?: Partial<Tenant>
   maskedApiKey?: string
-  onSave: (data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) => Promise<void>
+  onSave: (data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) => Promise<void>
   onCancel: () => void
 }) {
   const parsed = initial?.unifiHost ? parseHost(initial.unifiHost) : null
@@ -271,7 +277,13 @@ export function TenantsClient({ tenants }: Props) {
 
   const editingTenant = tenants.find((t) => t._id === editId)
 
-  async function handleAdd(data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) {
+  async function handleAdd(data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) {
     const res = await fetch('/api/tenants', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -282,7 +294,13 @@ export function TenantsClient({ tenants }: Props) {
     router.refresh()
   }
 
-  async function handleEdit(id: string, data: { name: string; description: string; unifiHost: string; unifiApiKey: string; timezone: string }) {
+  async function handleEdit(id: string, data: {
+    name: string
+    description: string
+    unifiHost: string
+    unifiApiKey: string
+    timezone: string
+  }) {
     const res = await fetch(`/api/tenants/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },

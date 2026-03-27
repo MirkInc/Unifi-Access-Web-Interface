@@ -3,6 +3,7 @@ import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import Tenant from '@/models/Tenant'
 import Door from '@/models/Door'
+import AppSetting from '@/models/AppSetting'
 import { UserAccessClient } from './UserAccessClient'
 
 interface PageProps { params: Promise<{ id: string }> }
@@ -11,9 +12,10 @@ export default async function UserAccessPage({ params }: PageProps) {
   const { id } = await params
   await connectDB()
 
-  const [user, tenants] = await Promise.all([
+  const [user, tenants, appSetting] = await Promise.all([
     User.findById(id).select('-passwordHash').lean(),
     Tenant.find().sort({ name: 1 }).lean(),
+    AppSetting.findOne({ key: 'global' }).select('portalUrls').lean(),
   ])
   if (!user) notFound()
 
@@ -54,11 +56,20 @@ export default async function UserAccessPage({ params }: PageProps) {
   }
 
   return (
-    <UserAccessClient
-      user={{ _id: user._id.toString(), name: user.name, email: user.email, role: user.role, isActive: user.isActive ?? true, pendingEmail: user.pendingEmail ?? null }}
+      <UserAccessClient
+      user={{
+        _id: user._id.toString(),
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        isActive: user.isActive ?? true,
+        pendingEmail: user.pendingEmail ?? null,
+        preferredPortalUrl: user.preferredPortalUrl ?? null,
+      }}
       tenants={tenants.map((t) => ({ _id: t._id.toString(), name: t.name }))}
       doorsByTenant={doorsByTenant}
       initialAccess={tenantAccessMap}
+      portalUrls={appSetting?.portalUrls ?? []}
     />
   )
 }

@@ -2,14 +2,41 @@ import { Resend } from 'resend'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.RESEND_FROM_EMAIL ?? 'noreply@example.com'
-const BASE_URL = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
+
+function normalizeBaseUrl(value?: string | null): string | null {
+  const raw = (value ?? '').trim()
+  if (!raw) return null
+  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`
+  return withProtocol.replace(/\/+$/, '')
+}
+
+export function resolvePortalUrl(opts?: { preferredPortalUrl?: string | null; request?: Request }): string {
+  const preferred = normalizeBaseUrl(opts?.preferredPortalUrl)
+  if (preferred) return preferred
+
+  const host = opts?.request?.headers.get('host') ?? ''
+  if (host) {
+    const proto = opts?.request?.headers.get('x-forwarded-proto') ?? 'https'
+    return `${proto}://${host}`
+  }
+
+  return (
+    normalizeBaseUrl(process.env.APP_BASE_URL) ??
+    normalizeBaseUrl(process.env.NEXTAUTH_URL) ??
+    normalizeBaseUrl(process.env.NEXT_PUBLIC_APP_URL) ??
+    normalizeBaseUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL) ??
+    normalizeBaseUrl(process.env.VERCEL_URL) ??
+    'http://localhost:3000'
+  )
+}
 
 export async function sendPasswordResetEmail(
   email: string,
   name: string,
-  token: string
+  token: string,
+  preferredPortalUrl?: string | null
 ): Promise<void> {
-  const resetUrl = `${BASE_URL}/reset-password?token=${token}`
+  const resetUrl = `${resolvePortalUrl({ preferredPortalUrl })}/reset-password?token=${token}`
 
   await resend.emails.send({
     from: FROM,
@@ -37,12 +64,47 @@ export async function sendPasswordResetEmail(
   })
 }
 
+export async function sendInvitationReminderEmail(
+  email: string,
+  name: string,
+  token: string,
+  preferredPortalUrl?: string | null
+): Promise<void> {
+  const resetUrl = `${resolvePortalUrl({ preferredPortalUrl })}/reset-password?token=${token}`
+
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'Reminder: complete your Access Portal setup',
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+        <h2 style="color: #006FFF; margin-bottom: 8px;">Access Portal Reminder</h2>
+        <p style="color: #333; margin-bottom: 24px;">Hi ${name},</p>
+        <p style="color: #333;">This is a reminder to finish setting up your Access Portal account.</p>
+        <a href="${resetUrl}" style="
+          display: inline-block;
+          background: #006FFF;
+          color: white;
+          padding: 12px 24px;
+          border-radius: 8px;
+          text-decoration: none;
+          font-weight: 600;
+          margin: 24px 0;
+        ">Set Password</a>
+        <p style="color: #666; font-size: 13px;">This link expires in 24 hours. If you no longer need access, ignore this email.</p>
+        <p style="color: #999; font-size: 12px;">${resetUrl}</p>
+      </div>
+    `,
+  })
+}
+
 export async function sendForgotPasswordEmail(
   email: string,
   name: string,
-  token: string
+  token: string,
+  preferredPortalUrl?: string | null
 ): Promise<void> {
-  const resetUrl = `${BASE_URL}/reset-password?token=${token}`
+  const resetUrl = `${resolvePortalUrl({ preferredPortalUrl })}/reset-password?token=${token}`
 
   await resend.emails.send({
     from: FROM,
@@ -112,9 +174,10 @@ export async function sendEmailChangeNotification(
 export async function sendEmailConfirmation(
   newEmail: string,
   name: string,
-  token: string
+  token: string,
+  preferredPortalUrl?: string | null
 ): Promise<void> {
-  const confirmUrl = `${BASE_URL}/confirm-email?token=${token}`
+  const confirmUrl = `${resolvePortalUrl({ preferredPortalUrl })}/confirm-email?token=${token}`
   await resend.emails.send({
     from: FROM,
     to: newEmail,

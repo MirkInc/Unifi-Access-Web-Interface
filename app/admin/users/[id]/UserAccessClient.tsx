@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 
 interface Door { _id: string; name: string }
 interface Tenant { _id: string; name: string }
-interface UserInfo { _id: string; name: string; email: string; role: string; isActive: boolean; pendingEmail: string | null }
+interface UserInfo { _id: string; name: string; email: string; role: string; isActive: boolean; pendingEmail: string | null; preferredPortalUrl: string | null }
 
 type DoorPerms = {
   canUnlock: boolean
@@ -38,15 +38,17 @@ interface Props {
   tenants: Tenant[]
   doorsByTenant: Record<string, Door[]>
   initialAccess: Record<string, Record<string, DoorPerms>>
+  portalUrls: string[]
 }
 
-export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }: Props) {
+export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, portalUrls }: Props) {
   const router = useRouter()
 
   // Profile fields
   const [profileName, setProfileName] = useState(user.name)
   const [profileEmail, setProfileEmail] = useState(user.email)
   const [profileRole, setProfileRole] = useState(user.role)
+  const [profilePreferredPortalUrl, setProfilePreferredPortalUrl] = useState(user.preferredPortalUrl ?? '')
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
@@ -56,8 +58,26 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
 
   // Save state
   const [saving, setSaving] = useState(false)
+  const [resendingInvite, setResendingInvite] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
+
+
+  async function handleResendInvite() {
+    setResendingInvite(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/users/${user._id}/resend-invite`, { method: 'POST' })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(d.error ?? 'Failed to resend invite')
+        return
+      }
+      setSuccess('Invitation resent.')
+    } finally {
+      setResendingInvite(false)
+    }
+  }
 
   async function handleSave() {
     setSaving(true); setError(''); setSuccess('')
@@ -71,6 +91,7 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
       name: profileName,
       email: profileEmail,
       role: profileRole,
+      preferredPortalUrl: profilePreferredPortalUrl || null,
       tenantAccess,
     }
     if (newPassword) body.password = newPassword
@@ -174,8 +195,13 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
         <div className="flex items-center gap-3">
           {success && <span className="text-sm text-green-600 font-medium">{success}</span>}
           {error && <span className="text-sm text-red-600">{error}</span>}
+          {!user.isActive && (
+            <button className="btn-secondary" onClick={handleResendInvite} disabled={resendingInvite}>
+              {resendingInvite ? 'Sending…' : 'Resend Invite'}
+            </button>
+          )}
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Savingâ€¦' : 'Save'}
           </button>
         </div>
       </div>
@@ -200,6 +226,19 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
             <select className="input" value={profileRole} onChange={(e) => setProfileRole(e.target.value)}>
               <option value="user">User</option>
               <option value="admin">Admin</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Preferred Portal URL</label>
+            <select
+              className="input"
+              value={profilePreferredPortalUrl}
+              onChange={(e) => setProfilePreferredPortalUrl(e.target.value)}
+            >
+              <option value="">Default (current domain)</option>
+              {portalUrls.map((url) => (
+                <option key={url} value={url}>{url}</option>
+              ))}
             </select>
           </div>
           <div>
@@ -340,3 +379,6 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess }
     </div>
   )
 }
+
+
+
