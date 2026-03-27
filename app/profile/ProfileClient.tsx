@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { startRegistration } from '@simplewebauthn/browser'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Mail, Smartphone } from 'lucide-react'
+import { OtpInput } from '@/components/OtpInput'
 
 interface Props {
   initialName: string
@@ -40,6 +41,11 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
   const [emailVerified, setEmailVerified] = useState(initialMfa.emailVerified)
   const [totpEnabled, setTotpEnabled] = useState(initialMfa.totpEnabled)
   const [passkeys, setPasskeys] = useState(initialMfa.passkeys)
+
+  const hasAnyMethod = emailEnabled || totpEnabled || passkeys.length > 0
+  const [mfaActive, setMfaActive] = useState(hasAnyMethod)
+  const methodCount = (emailEnabled ? 1 : 0) + (totpEnabled ? 1 : 0) + passkeys.length
+  const canRemove = !initialMfa.mfaEnforced || methodCount > 1
   const [emailCode, setEmailCode] = useState('')
   const [emailSetupOpen, setEmailSetupOpen] = useState(false)
   const [totpSetupOpen, setTotpSetupOpen] = useState(false)
@@ -98,6 +104,34 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
     }
   }
 
+  async function disableAllMfa() {
+    setMfaBusy(true)
+    setError('')
+    try {
+      if (emailEnabled) {
+        const res = await fetch('/api/mfa/email/disable', { method: 'POST' })
+        if (res.ok) { setEmailEnabled(false); setEmailVerified(false); setEmailSetupOpen(false); setEmailCode('') }
+      }
+      if (totpEnabled) {
+        const res = await fetch('/api/mfa/totp/disable', { method: 'POST' })
+        if (res.ok) { setTotpEnabled(false); setTotpSetupOpen(false); setTotpCode(''); setTotpSecret(''); setTotpQrDataUrl('') }
+      }
+      const currentPasskeys = passkeys
+      for (const p of currentPasskeys) {
+        const res = await fetch('/api/mfa/passkeys/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: p.id }),
+        })
+        if (res.ok) setPasskeys((prev) => prev.filter((x) => x.id !== p.id))
+      }
+      setMfaActive(false)
+      setSuccess('MFA disabled.')
+    } finally {
+      setMfaBusy(false)
+    }
+  }
+
   async function enableEmailMfa() {
     setMfaBusy(true)
     setError('')
@@ -116,18 +150,20 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
     }
   }
 
-  async function verifyEmailMfa() {
+  async function verifyEmailMfa(codeValue?: string) {
+    const code = codeValue ?? emailCode
     setMfaBusy(true)
     setError('')
     try {
       const res = await fetch('/api/mfa/email/setup/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: emailCode }),
+        body: JSON.stringify({ code }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error ?? 'Invalid code')
+        setEmailCode('')
         return
       }
       setEmailEnabled(true)
@@ -179,18 +215,20 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
     }
   }
 
-  async function verifyTotpSetup() {
+  async function verifyTotpSetup(codeValue?: string) {
+    const code = codeValue ?? totpCode
     setMfaBusy(true)
     setError('')
     try {
       const res = await fetch('/api/mfa/totp/setup/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: totpCode }),
+        body: JSON.stringify({ code }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error ?? 'Invalid authenticator code')
+        setTotpCode('')
         return
       }
       setTotpEnabled(true)
@@ -328,7 +366,7 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
             <div>
               <label className="label">Current Password</label>
               <div className="relative">
-                <input className="input pr-10" type={showCurrentPassword ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Required to change password" autoComplete="current-password" />
+                <input className="input pr-10" type={showCurrentPassword ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Required to change password" autoComplete="off" />
                 <button type="button" onClick={() => setShowCurrentPassword((v) => !v)} className="absolute inset-y-0 right-0 px-3 flex items-center text-gray-400 hover:text-gray-600" aria-label={showCurrentPassword ? 'Hide current password' : 'Show current password'}>
                   {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -357,24 +395,37 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
           </div>
 
           <div className="card p-6 space-y-5">
-            <h2 className="font-semibold text-gray-900">Security - Multi-Factor Authentication</h2>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="font-semibold text-gray-900">Security - Multi-Factor Authentication</h2>
+              {!initialMfa.mfaEnforced && (
+                mfaActive
+                  ? <button type="button" className="btn-secondary text-sm" onClick={disableAllMfa} disabled={mfaBusy}>Disable MFA</button>
+                  : <button type="button" className="btn-primary text-sm" onClick={() => setMfaActive(true)} disabled={mfaBusy}>Enable MFA</button>
+              )}
+            </div>
 
+            <div className={`space-y-4 transition-opacity ${!mfaActive ? 'opacity-40 pointer-events-none select-none' : ''}`}>
             <div className="border rounded-xl p-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-gray-900">Email code</p>
-                  <p className="text-xs text-gray-500">6-digit code sent to your email</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <Mail className="w-4 h-4 text-[#006FFF]" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Email code</p>
+                    <p className="text-xs text-gray-500">6-digit code sent to your email</p>
+                  </div>
                 </div>
                 {emailEnabled ? (
-                  <button type="button" className="btn-secondary" onClick={disableEmailMfa} disabled={mfaBusy}>Disable</button>
+                  <button type="button" className="btn-secondary" onClick={disableEmailMfa} disabled={mfaBusy || !canRemove} title={!canRemove ? 'Cannot remove your only MFA method' : undefined}>Disable</button>
                 ) : (
                   <button type="button" className="btn-secondary" onClick={enableEmailMfa} disabled={mfaBusy}>Enable</button>
                 )}
               </div>
               {emailEnabled && <p className="text-xs text-green-700 mt-2">Enabled {emailVerified ? '(verified)' : ''}</p>}
               {emailSetupOpen && !emailEnabled && (
-                <div className="mt-3 flex items-center gap-2">
-                  <input className="input max-w-[180px]" value={emailCode} onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" inputMode="numeric" />
+                <div className="mt-3 space-y-3">
+                  <OtpInput value={emailCode} onChange={setEmailCode} onComplete={verifyEmailMfa} disabled={mfaBusy} />
                   <button type="button" className="btn-primary" onClick={verifyEmailMfa} disabled={mfaBusy || emailCode.length !== 6}>Verify</button>
                 </div>
               )}
@@ -382,12 +433,17 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
 
             <div className="border rounded-xl p-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-gray-900">Authenticator app</p>
-                  <p className="text-xs text-gray-500">Google Authenticator, Microsoft Authenticator, etc.</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <Smartphone className="w-4 h-4 text-[#006FFF]" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Authenticator app</p>
+                    <p className="text-xs text-gray-500">Google Authenticator, Microsoft Authenticator, etc.</p>
+                  </div>
                 </div>
                 {totpEnabled ? (
-                  <button type="button" className="btn-secondary" onClick={disableTotp} disabled={mfaBusy}>Disable</button>
+                  <button type="button" className="btn-secondary" onClick={disableTotp} disabled={mfaBusy || !canRemove} title={!canRemove ? 'Cannot remove your only MFA method' : undefined}>Disable</button>
                 ) : (
                   <button type="button" className="btn-secondary" onClick={startTotpSetup} disabled={mfaBusy}>Setup</button>
                 )}
@@ -397,8 +453,8 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
                 <div className="mt-3 space-y-3">
                   {totpQrDataUrl && <img src={totpQrDataUrl} alt="Authenticator QR Code" className="w-44 h-44 border rounded-lg" />}
                   {totpSecret && <p className="text-xs text-gray-600">Manual key: <span className="font-mono">{totpSecret}</span></p>}
-                  <div className="flex items-center gap-2">
-                    <input className="input max-w-[180px]" value={totpCode} onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="6-digit code" inputMode="numeric" />
+                  <div className="space-y-3">
+                    <OtpInput value={totpCode} onChange={setTotpCode} onComplete={verifyTotpSetup} disabled={mfaBusy} />
                     <button type="button" className="btn-primary" onClick={verifyTotpSetup} disabled={mfaBusy || totpCode.length !== 6}>Verify</button>
                   </div>
                 </div>
@@ -407,9 +463,14 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
 
             <div className="border rounded-xl p-4">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="font-medium text-gray-900">Passkeys</p>
-                  <p className="text-xs text-gray-500">Windows Hello, Face ID, Touch ID, security keys</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                    <KeyRound className="w-4 h-4 text-[#006FFF]" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-gray-900">Passkeys</p>
+                    <p className="text-xs text-gray-500">Windows Hello, Face ID, Touch ID, security keys</p>
+                  </div>
                 </div>
                 <button type="button" className="btn-secondary" onClick={addPasskey} disabled={mfaBusy}>Add passkey</button>
               </div>
@@ -423,13 +484,14 @@ export function ProfileClient({ initialName, initialEmail, role, initialMfa }: P
                         <p className="text-sm text-gray-800">{p.name}</p>
                         <p className="text-xs text-gray-500">{new Date(p.createdAt).toLocaleString()}</p>
                       </div>
-                      <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => removePasskey(p.id)} disabled={mfaBusy}>
+                      <button type="button" className="text-xs text-red-600 hover:underline" onClick={() => removePasskey(p.id)} disabled={mfaBusy || !canRemove} title={!canRemove ? 'Cannot remove your only MFA method' : undefined}>
                         Remove
                       </button>
                     </div>
                   ))
                 )}
               </div>
+            </div>
             </div>
           </div>
 

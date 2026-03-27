@@ -1,4 +1,5 @@
 import { PortalUrlsClient } from './PortalUrlsClient'
+import { LogoutAllClient } from './LogoutAllClient'
 
 export default function AdminPreferencesPage() {
   return (
@@ -8,6 +9,7 @@ export default function AdminPreferencesPage() {
         <p className="text-sm text-gray-500 mt-1">Global application settings</p>
       </div>
       <PortalUrlsClient />
+      <LogoutAllClient />
     </div>
   )
 }

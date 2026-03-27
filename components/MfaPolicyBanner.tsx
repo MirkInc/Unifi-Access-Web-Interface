@@ -55,7 +55,7 @@ export function MfaPolicyBanner() {
             : 'Admin policy: MFA setup is required for your account.'}{' '}
           Configure it in your profile.
         </p>
-        <Link href="/profile" className="text-sm font-medium text-amber-900 hover:underline whitespace-nowrap">
+        <Link href="/mfa-setup" className="text-sm font-medium text-amber-900 hover:underline whitespace-nowrap">
           Set up MFA
         </Link>
       </div>

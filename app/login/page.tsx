@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { startAuthentication } from '@simplewebauthn/browser'
 import { Eye, EyeOff, KeyRound, Mail, Smartphone } from 'lucide-react'
+import { OtpInput } from '@/components/OtpInput'
 
 type MfaMethod = 'email' | 'totp' | 'passkey'
 
@@ -25,6 +26,18 @@ export default function LoginPage() {
   const [code, setCode] = useState('')
   const [policyNotice, setPolicyNotice] = useState('')
   const [policyEnforceAt, setPolicyEnforceAt] = useState<string>('')
+
+  const passkeyAutoTriggered = useRef(false)
+  useEffect(() => {
+    if (step === 'mfa' && mfaView === 'verify' && selectedMethod === 'passkey' && !loading) {
+      if (passkeyAutoTriggered.current) return
+      passkeyAutoTriggered.current = true
+      void verifyPasskey()
+    } else {
+      passkeyAutoTriggered.current = false
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, mfaView, selectedMethod])
 
   async function finishLogin(loginToken: string) {
     const res = await signIn('credentials', {
@@ -70,30 +83,37 @@ export default function LoginPage() {
       }
 
       const available = (mfaStart.methods ?? []) as MfaMethod[]
+      const defaultMethod = (mfaStart.defaultMethod as MfaMethod) ?? available[0] ?? 'email'
+      const token = mfaStart.challengeToken ?? ''
       setMethods(available)
-      setSelectedMethod((mfaStart.defaultMethod as MfaMethod) ?? available[0] ?? 'email')
-      setChallengeToken(mfaStart.challengeToken ?? '')
+      setSelectedMethod(defaultMethod)
+      setChallengeToken(token)
       setPolicyNotice(String(mfaStart.policyNotice ?? ''))
-      setMfaView(available.length > 1 ? 'choose' : 'verify')
+      const skipChooser = available.length === 1
+      setMfaView(skipChooser ? 'verify' : 'choose')
       setStep('mfa')
+      // Send email code only if email is the method being shown immediately
+      if (defaultMethod === 'email' && skipChooser) {
+        void sendEmailCode(token)
+      }
     } finally {
       setLoading(false)
     }
   }
 
-  async function handleCodeVerify(e: React.FormEvent) {
-    e.preventDefault()
+  async function submitCode(codeValue: string) {
     setLoading(true)
     setError('')
     try {
       const res = await fetch('/api/auth/mfa/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken, method: selectedMethod, code }),
+        body: JSON.stringify({ challengeToken, method: selectedMethod, code: codeValue }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(data.error ?? 'MFA verification failed')
+        setCode('')
         return
       }
       await finishLogin(data.loginToken)
@@ -102,17 +122,30 @@ export default function LoginPage() {
     }
   }
 
-  async function resendEmailCode() {
-    setLoading(true)
-    setError('')
+  function handleCodeVerify(e: React.FormEvent) {
+    e.preventDefault()
+    void submitCode(code)
+  }
+
+  async function sendEmailCode(token: string) {
     try {
       const res = await fetch('/api/auth/mfa/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ challengeToken }),
+        body: JSON.stringify({ challengeToken: token }),
       })
       const data = await res.json().catch(() => ({}))
-      if (!res.ok) setError(data.error ?? 'Failed to resend code')
+      if (!res.ok) setError(data.error ?? 'Failed to send code')
+    } catch {
+      setError('Failed to send code')
+    }
+  }
+
+  async function resendEmailCode() {
+    setLoading(true)
+    setError('')
+    try {
+      await sendEmailCode(challengeToken)
     } finally {
       setLoading(false)
     }
@@ -196,7 +229,7 @@ export default function LoginPage() {
           )}
 
           {step === 'password' ? (
-            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <form onSubmit={handlePasswordSubmit} method="post" className="space-y-4">
               <div>
                 <label className="label" htmlFor="email">Email</label>
                 <input
@@ -259,15 +292,22 @@ export default function LoginPage() {
               )}
               <button
                 type="button"
-                className="btn-secondary w-full"
-                onClick={() => router.push('/profile')}
+                className="btn-primary w-full"
                 disabled={loading}
+                onClick={async () => {
+                  setLoading(true)
+                  setError('')
+                  const res = await signIn('credentials', { email, password, redirect: false })
+                  setLoading(false)
+                  if (res?.error) setError('Invalid email or password')
+                  else router.push('/mfa-setup')
+                }}
               >
-                Set up MFA now
+                {loading ? 'Continuing...' : 'Set up MFA now'}
               </button>
               <button
                 type="button"
-                className="btn-primary w-full"
+                className="btn-secondary w-full"
                 disabled={loading}
                 onClick={async () => {
                   setLoading(true)
@@ -311,6 +351,7 @@ export default function LoginPage() {
                         setCode('')
                         setError('')
                         setMfaView('verify')
+                        if (method === 'email') void sendEmailCode(challengeToken)
                       }}
                     >
                       <div className="flex items-center gap-3">
@@ -337,14 +378,7 @@ export default function LoginPage() {
                   <p className="text-sm text-gray-600">Use your selected method: {methodLabel(selectedMethod)}</p>
                   <div>
                     <label className="label">{codePrompt}</label>
-                    <input
-                      className="input"
-                      value={code}
-                      onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      placeholder="123456"
-                      inputMode="numeric"
-                      autoFocus
-                    />
+                    <OtpInput value={code} onChange={setCode} onComplete={submitCode} disabled={loading} autoFocus />
                   </div>
                   <button type="submit" className="btn-primary w-full" disabled={loading || code.length !== 6}>
                     {loading ? 'Verifying...' : 'Verify'}

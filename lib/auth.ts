@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import MfaLoginToken from '@/models/MfaLoginToken'
+import AppSetting from '@/models/AppSetting'
 import { shouldRequireMfa } from '@/lib/mfa'
 
 export const authOptions: NextAuthOptions = {
@@ -61,11 +62,22 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id
         token.role = (user as { role: string }).role as 'admin' | 'user'
+        token.issuedAt = Math.floor(Date.now() / 1000)
       }
       // Allow client-side session.update() to refresh name/email in the token
       if (trigger === 'update' && session) {
         if (session.name) token.name = session.name
         if (session.email) token.email = session.email
+      }
+      // Check global logout — expire sessions issued before the globalLogoutAt timestamp
+      if (token.issuedAt) {
+        await connectDB()
+        const setting = await AppSetting.findOne({ key: 'global' }).lean()
+        const globalLogoutAt = setting?.globalLogoutAt
+        if (globalLogoutAt && (token.issuedAt as number) * 1000 < new Date(globalLogoutAt).getTime()) {
+          // Force expiry — returning a past exp causes next-auth to treat session as expired
+          return { ...token, exp: Math.floor(Date.now() / 1000) - 1 }
+        }
       }
       return token
     },
@@ -82,7 +94,7 @@ export const authOptions: NextAuthOptions = {
   },
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 hours
-    updateAge: 60 * 60,  // refresh token age hourly
+    maxAge: 8 * 60 * 60,  // 8 hours
+    updateAge: 5 * 60,   // revalidate every 5 minutes (enables fast global logout)
   },
 }

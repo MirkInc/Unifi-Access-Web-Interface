@@ -32,6 +32,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen flex flex-col">
       <header className="bg-white border-b border-gray-200 sticky top-0 z-40">
+        <MfaPolicyBanner />
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-[#006FFF] flex items-center justify-center flex-shrink-0">
@@ -53,7 +54,6 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
           <AdminUserMenu userName={(session.user as { name?: string }).name ?? ''} />
         </div>
-        <MfaPolicyBanner />
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">

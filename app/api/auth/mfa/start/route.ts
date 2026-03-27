@@ -4,8 +4,7 @@ import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import MfaLoginChallenge from '@/models/MfaLoginChallenge'
 import { generateToken } from '@/lib/utils'
-import { generateNumericCode, getLoginMfaMethods, hashMfaCode, shouldRequireMfa } from '@/lib/mfa'
-import { sendMfaCodeEmail } from '@/lib/mail'
+import { getLoginMfaMethods, shouldRequireMfa } from '@/lib/mfa'
 
 export async function POST(req: Request) {
   const { email, password } = await req.json()
@@ -41,29 +40,18 @@ export async function POST(req: Request) {
   const token = generateToken(48)
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
-  let emailCodeHash: string | null = null
-  let emailCodeExpiresAt: Date | null = null
-
-  if (methods.includes('email')) {
-    const code = generateNumericCode(6)
-    emailCodeHash = hashMfaCode(code)
-    emailCodeExpiresAt = new Date(Date.now() + 10 * 60 * 1000)
-    await sendMfaCodeEmail(user.email, user.name, code)
-  }
-
   await MfaLoginChallenge.create({
     userId: user._id,
     token,
     expiresAt,
     used: false,
     methods,
-    emailCodeHash,
-    emailCodeExpiresAt,
+    emailCodeHash: null,
+    emailCodeExpiresAt: null,
   })
 
   return NextResponse.json({
     requiresMfa: true,
-    policyNotice: user.mfaEnforced ? 'An administrator requires MFA for this account.' : undefined,
     challengeToken: token,
     methods,
     defaultMethod: methods[0],
