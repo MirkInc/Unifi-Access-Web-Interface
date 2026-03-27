@@ -3,6 +3,8 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
+import MfaLoginToken from '@/models/MfaLoginToken'
+import { shouldRequireMfa } from '@/lib/mfa'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -11,16 +13,42 @@ export const authOptions: NextAuthOptions = {
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' },
+        mfaLoginToken: { label: 'MFA Login Token', type: 'text' },
       },
       async authorize(credentials) {
+        await connectDB()
+
+        if (credentials?.mfaLoginToken) {
+          const loginToken = await MfaLoginToken.findOne({
+            token: credentials.mfaLoginToken,
+            used: false,
+            expiresAt: { $gt: new Date() },
+          })
+          if (!loginToken) return null
+
+          const user = await User.findById(loginToken.userId)
+          if (!user) return null
+
+          loginToken.used = true
+          await loginToken.save()
+
+          return {
+            id: user._id.toString(),
+            email: user.email,
+            name: user.name,
+            role: user.role,
+          }
+        }
+
         if (!credentials?.email || !credentials?.password) return null
 
-        await connectDB()
         const user = await User.findOne({ email: credentials.email.toLowerCase() })
         if (!user) return null
 
         const valid = await bcrypt.compare(credentials.password, user.passwordHash)
         if (!valid) return null
+
+        if (shouldRequireMfa(user)) return null
 
         return {
           id: user._id.toString(),

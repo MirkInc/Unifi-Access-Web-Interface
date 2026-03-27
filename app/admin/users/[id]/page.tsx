@@ -65,6 +65,11 @@ export default async function UserAccessPage({ params }: PageProps) {
         isActive: user.isActive ?? true,
         pendingEmail: user.pendingEmail ?? null,
         preferredPortalUrl: user.preferredPortalUrl ?? null,
+        mfaEnforced: user.mfaEnforced ?? false,
+        mfaRequiredFrom: user.mfaRequiredFrom ? new Date(user.mfaRequiredFrom).toISOString() : null,
+        mfaEmailEnabled: user.mfaEmailEnabled ?? false,
+        mfaTotpEnabled: user.mfaTotpEnabled ?? false,
+        mfaPasskeyCount: (user.mfaPasskeys ?? []).length,
       }}
       tenants={tenants.map((t) => ({ _id: t._id.toString(), name: t.name }))}
       doorsByTenant={doorsByTenant}

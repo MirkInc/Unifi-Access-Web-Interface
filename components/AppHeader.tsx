@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { signOut } from 'next-auth/react'
 import Link from 'next/link'
 import { TenantSwitcher } from '@/components/TenantSwitcher'
+import { MfaPolicyBanner } from '@/components/MfaPolicyBanner'
 import { getInitials } from '@/lib/utils'
 
 interface Props {
@@ -76,6 +77,7 @@ export function AppHeader({
           )}
         </div>
       </div>
+      <MfaPolicyBanner />
     </header>
   )
 }

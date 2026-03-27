@@ -6,6 +6,7 @@ import type { Metadata } from 'next'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { TenantSwitcher } from '@/components/TenantSwitcher'
+import { MfaPolicyBanner } from '@/components/MfaPolicyBanner'
 import { AdminNav } from './AdminNav'
 import { AdminUserMenu } from './AdminUserMenu'
 
@@ -52,6 +53,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
           <AdminUserMenu userName={(session.user as { name?: string }).name ?? ''} />
         </div>
+        <MfaPolicyBanner />
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 py-8">

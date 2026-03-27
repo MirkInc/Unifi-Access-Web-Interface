@@ -203,3 +203,45 @@ export async function sendEmailConfirmation(
     `,
   })
 }
+
+export async function sendMfaCodeEmail(
+  email: string,
+  name: string,
+  code: string
+): Promise<void> {
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'Your Access Portal verification code',
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+        <h2 style="color: #006FFF;">Verification Code</h2>
+        <p>Hi ${name},</p>
+        <p>Use this 6-digit verification code to continue:</p>
+        <p style="font-size: 28px; letter-spacing: 6px; font-weight: 700; color: #111; margin: 20px 0;">${code}</p>
+        <p style="color: #666; font-size: 13px;">This code expires in 10 minutes. If you did not request it, ignore this email.</p>
+      </div>
+    `,
+  })
+}
+
+export async function sendMfaPolicyEmail(
+  email: string,
+  name: string,
+  requiredFrom: Date
+): Promise<void> {
+  await resend.emails.send({
+    from: FROM,
+    to: email,
+    subject: 'MFA is now required on your Access Portal account',
+    html: `
+      <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+        <h2 style="color: #006FFF;">Security policy updated</h2>
+        <p>Hi ${name},</p>
+        <p>An administrator has required multi-factor authentication (MFA) for your account.</p>
+        <p>MFA requirement starts: <strong>${requiredFrom.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</strong></p>
+        <p style="color: #666; font-size: 13px;">At login you will be prompted for MFA. You can set up authenticator app and passkeys in your profile.</p>
+      </div>
+    `,
+  })
+}

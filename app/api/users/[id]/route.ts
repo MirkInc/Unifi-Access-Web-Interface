@@ -7,7 +7,7 @@ import { connectDB } from '@/lib/mongodb'
 import User from '@/models/User'
 import PasswordResetToken from '@/models/PasswordResetToken'
 import { generateToken } from '@/lib/utils'
-import { resolvePortalUrl, sendEmailChangeNotification, sendEmailConfirmation } from '@/lib/mail'
+import { resolvePortalUrl, sendEmailChangeNotification, sendEmailConfirmation, sendMfaPolicyEmail } from '@/lib/mail'
 import { writeAudit } from '@/lib/audit'
 
 type Params = { params: Promise<{ id: string }> }
@@ -34,7 +34,7 @@ export async function PUT(req: Request, { params }: Params) {
   const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
-  const { name, email, role, password, tenantAccess, preferredPortalUrl } = body
+  const { name, email, role, password, tenantAccess, preferredPortalUrl, mfaEnforced, mfaEnforceDelayDays } = body
 
   await connectDB()
 
@@ -43,6 +43,8 @@ export async function PUT(req: Request, { params }: Params) {
   const beforeName = user.name
   const beforeEmail = user.email
   const beforeRole = user.role
+  const beforeMfaEnforced = Boolean(user.mfaEnforced)
+  const beforeMfaRequiredFrom = user.mfaRequiredFrom ? new Date(user.mfaRequiredFrom) : null
   const beforeAccess = JSON.stringify(user.tenantAccess ?? [])
 
   const update: Record<string, unknown> = {}
@@ -50,7 +52,25 @@ export async function PUT(req: Request, { params }: Params) {
   if (role) update.role = role
   if (tenantAccess !== undefined) update.tenantAccess = tenantAccess
   if (preferredPortalUrl !== undefined) update.preferredPortalUrl = preferredPortalUrl?.trim() || null
+  if (mfaEnforced !== undefined) {
+    const nextEnforced = Boolean(mfaEnforced)
+    update.mfaEnforced = nextEnforced
+    if (nextEnforced) {
+      const delayRaw = Number(mfaEnforceDelayDays ?? 0)
+      const delayDays = Number.isFinite(delayRaw) ? Math.max(0, Math.min(365, Math.floor(delayRaw))) : 0
+      update.mfaRequiredFrom = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000)
+    } else {
+      update.mfaRequiredFrom = null
+    }
+  }
   if (password) update.passwordHash = await bcrypt.hash(password, 10)
+
+  if (mfaEnforced !== undefined && Boolean(mfaEnforced) && !beforeMfaEnforced) {
+    const delayRaw = Number(mfaEnforceDelayDays ?? 0)
+    const delayDays = Number.isFinite(delayRaw) ? Math.max(0, Math.min(365, Math.floor(delayRaw))) : 0
+    const requiredFrom = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000)
+    Promise.resolve(sendMfaPolicyEmail(user.email, name?.trim() || user.name, requiredFrom)).catch(console.error)
+  }
 
   // Email change — store as pending and send confirmation emails
   if (email && email.toLowerCase().trim() !== user.email) {
@@ -85,12 +105,14 @@ export async function PUT(req: Request, { params }: Params) {
   const changedRole = typeof role === 'string' && role !== beforeRole
   const changedPassword = Boolean(password)
   const changedAccess = tenantAccess !== undefined && JSON.stringify(tenantAccess) !== beforeAccess
+  const changedMfaEnforced = mfaEnforced !== undefined && Boolean(mfaEnforced) !== beforeMfaEnforced
   const changedFields = [
     changedName ? 'name' : null,
     changedEmail ? 'email' : null,
     changedRole ? 'role' : null,
     changedPassword ? 'password' : null,
     changedAccess ? 'door access' : null,
+    changedMfaEnforced ? 'mfa policy' : null,
   ].filter(Boolean) as string[]
 
   await writeAudit({
@@ -113,15 +135,20 @@ export async function PUT(req: Request, { params }: Params) {
       changedRole,
       changedPassword,
       changedAccess,
+      changedMfaEnforced,
       before: {
         name: beforeName,
         email: beforeEmail,
         role: beforeRole,
+        mfaEnforced: beforeMfaEnforced,
+        mfaRequiredFrom: beforeMfaRequiredFrom?.toISOString() ?? null,
       },
       after: {
         name: updated?.name ?? '',
         email: updated?.email ?? '',
         role: updated?.role ?? '',
+        mfaEnforced: Boolean(updated?.mfaEnforced),
+        mfaRequiredFrom: updated?.mfaRequiredFrom ? new Date(updated.mfaRequiredFrom).toISOString() : null,
       },
     },
   })

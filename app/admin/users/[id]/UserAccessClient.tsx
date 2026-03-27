@@ -8,7 +8,20 @@ import { cn } from '@/lib/utils'
 
 interface Door { _id: string; name: string }
 interface Tenant { _id: string; name: string }
-interface UserInfo { _id: string; name: string; email: string; role: string; isActive: boolean; pendingEmail: string | null; preferredPortalUrl: string | null }
+interface UserInfo {
+  _id: string
+  name: string
+  email: string
+  role: string
+  isActive: boolean
+  pendingEmail: string | null
+  preferredPortalUrl: string | null
+  mfaEnforced: boolean
+  mfaRequiredFrom: string | null
+  mfaEmailEnabled: boolean
+  mfaTotpEnabled: boolean
+  mfaPasskeyCount: number
+}
 
 type DoorPerms = {
   canUnlock: boolean
@@ -49,6 +62,14 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
   const [profileEmail, setProfileEmail] = useState(user.email)
   const [profileRole, setProfileRole] = useState(user.role)
   const [profilePreferredPortalUrl, setProfilePreferredPortalUrl] = useState(user.preferredPortalUrl ?? '')
+  const [profileMfaEnforced, setProfileMfaEnforced] = useState(Boolean(user.mfaEnforced))
+  const initialDelayDays = (() => {
+    if (!user.mfaRequiredFrom) return 0
+    const diff = new Date(user.mfaRequiredFrom).getTime() - Date.now()
+    if (diff <= 0) return 0
+    return Math.ceil(diff / (24 * 60 * 60 * 1000))
+  })()
+  const [profileMfaEnforceDelayDays, setProfileMfaEnforceDelayDays] = useState(initialDelayDays)
   const [newPassword, setNewPassword] = useState('')
   const [showNewPassword, setShowNewPassword] = useState(false)
 
@@ -92,6 +113,8 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
       email: profileEmail,
       role: profileRole,
       preferredPortalUrl: profilePreferredPortalUrl || null,
+      mfaEnforced: profileMfaEnforced,
+      mfaEnforceDelayDays: profileMfaEnforceDelayDays,
       tenantAccess,
     }
     if (newPassword) body.password = newPassword
@@ -201,7 +224,7 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
             </button>
           )}
           <button className="btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Savingâ€¦' : 'Save'}
+            {saving ? 'Saving...' : 'Save'}
           </button>
         </div>
       </div>
@@ -262,6 +285,37 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
                 {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+          </div>
+          <div className="sm:col-span-2 border border-gray-200 rounded-xl p-4">
+            <p className="text-sm font-medium text-gray-900 mb-3">MFA Policy</p>
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-[#006FFF]"
+                checked={profileMfaEnforced}
+                onChange={(e) => setProfileMfaEnforced(e.target.checked)}
+              />
+              <span className="text-sm text-gray-700">Enforce MFA for this user at every login</span>
+            </label>
+            {profileMfaEnforced && (
+              <div className="mt-3">
+                <label className="label">Enforcement Delay (days)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  className="input max-w-[180px]"
+                  value={profileMfaEnforceDelayDays}
+                  onChange={(e) => setProfileMfaEnforceDelayDays(Math.max(0, Math.min(365, Number(e.target.value || 0))))}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  0 = enforce on next login. User will receive an email notification when this policy is enabled.
+                </p>
+              </div>
+            )}
+            <p className="text-xs text-gray-500 mt-2">
+              Enabled methods: {user.mfaEmailEnabled ? 'Email' : ''}{user.mfaEmailEnabled && user.mfaTotpEnabled ? ', ' : ''}{user.mfaTotpEnabled ? 'Authenticator app' : ''}{(user.mfaEmailEnabled || user.mfaTotpEnabled) && user.mfaPasskeyCount > 0 ? ', ' : ''}{user.mfaPasskeyCount > 0 ? `Passkeys (${user.mfaPasskeyCount})` : ''}{!user.mfaEmailEnabled && !user.mfaTotpEnabled && user.mfaPasskeyCount === 0 ? 'None yet' : ''}
+            </p>
           </div>
         </div>
       </div>
