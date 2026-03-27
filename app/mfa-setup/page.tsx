@@ -16,6 +16,7 @@ export default async function MfaSetupPage() {
   return (
     <MfaSetupClient
       initialMfa={{
+        mfaEnforced: user.mfaEnforced ?? false,
         emailEnabled: user.mfaEmailEnabled ?? false,
         emailVerified: user.mfaEmailVerified ?? false,
         totpEnabled: user.mfaTotpEnabled ?? false,
