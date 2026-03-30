@@ -4,23 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { getAnalyticsOverview } from '@/lib/analytics'
-import { buildZip } from '@/lib/zip'
-
-function csvEscape(value: string | number): string {
-  const s = String(value ?? '')
-  if (!/[",\n]/.test(s)) return s
-  return `"${s.replace(/"/g, '""')}"`
-}
-
-function toCsv<T extends Record<string, unknown>>(rows: T[]): string {
-  if (rows.length === 0) return ''
-  const headers = Object.keys(rows[0])
-  const lines = [headers.join(',')]
-  for (const row of rows) {
-    lines.push(headers.map((h) => csvEscape((row[h] ?? '') as string | number)).join(','))
-  }
-  return lines.join('\n')
-}
+import * as XLSX from 'xlsx'
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
@@ -57,7 +41,9 @@ export async function GET(req: Request) {
     { sinceTs: since, untilTs: until, doorIds: doorIds.length > 0 ? doorIds : undefined }
   )
 
-  const kpiRows = [{
+  const wb = XLSX.utils.book_new()
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{
     generated_at_utc: new Date().toISOString(),
     since_ts: since,
     until_ts: until,
@@ -69,97 +55,82 @@ export async function GET(req: Request) {
     door_closed: data.openCloseKpi.closed,
     unlocked_seconds_estimated: data.openCloseKpi.unlockedSeconds,
     unauthorized_open_seconds_estimated: data.openCloseKpi.unauthorizedOpenSeconds,
-  }]
+  }]), 'KPI Summary')
 
-  const preferenceRows = [{
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.busiestDoors.map((r) => ({
+      door_id: r.doorId,
+      door_name: r.doorName,
+      total: r.total,
+      granted: r.granted,
+      denied: r.denied,
+      denial_rate: r.denialRate,
+    }))
+  ), 'Busiest Doors')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.denialByDay.map((r) => ({ day: r.key, total: r.total, denied: r.denied, denial_rate: r.denialRate }))
+  ), 'Denial by Day')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.denialByHour.map((r) => ({ hour: r.key, total: r.total, denied: r.denied, denial_rate: r.denialRate }))
+  ), 'Denial by Hour')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.openCloseByDay.map((r) => ({ day: r.key, opened: r.opened, closed: r.closed }))
+  ), 'Open-Close by Day')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.openCloseByHour.map((r) => ({ hour: r.key, opened: r.opened, closed: r.closed }))
+  ), 'Open-Close by Hour')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.unlockedByDay.map((r) => ({
+      day: r.key,
+      unlocked_seconds_estimated: r.unlockedSeconds,
+      unlocked_minutes_estimated: Math.round(r.unlockedSeconds / 60),
+    }))
+  ), 'Unlocked by Day')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.unauthorizedOpenByDay.map((r) => ({
+      day: r.key,
+      unauthorized_open_seconds_estimated: r.unauthorizedOpenSeconds,
+      unauthorized_open_minutes_estimated: Math.round(r.unauthorizedOpenSeconds / 60),
+    }))
+  ), 'Unauthorized Open by Day')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.methodMix.map((r) => ({ method: r.method, count: r.count }))
+  ), 'Method Mix')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+    data.anomalies.map((a) => ({
+      door_id: a.doorId,
+      door_name: a.doorName,
+      type: a.type,
+      bucket: a.bucket,
+      severity: a.severity,
+      total: a.total,
+      denied: a.denied,
+      denial_rate: a.denialRate,
+      baseline_rate: a.baselineRate,
+      baseline_volume: a.baselineVolume,
+      reason: a.reason,
+    }))
+  ), 'Anomalies')
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([{
     hide_unlocked_time: data.analyticsPreferences.hideUnlockedTime ? 'true' : 'false',
     hide_unauthorized_open_time: data.analyticsPreferences.hideUnauthorizedOpenTime ? 'true' : 'false',
-  }]
+  }]), 'Preferences')
 
-  const busiestRows = data.busiestDoors.map((r) => ({
-    door_id: r.doorId,
-    door_name: r.doorName,
-    total: r.total,
-    granted: r.granted,
-    denied: r.denied,
-    denial_rate: r.denialRate,
-  }))
+  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' })
 
-  const byDayRows = data.denialByDay.map((r) => ({
-    day: r.key,
-    total: r.total,
-    denied: r.denied,
-    denial_rate: r.denialRate,
-  }))
-
-  const byHourRows = data.denialByHour.map((r) => ({
-    hour: r.key,
-    total: r.total,
-    denied: r.denied,
-    denial_rate: r.denialRate,
-  }))
-
-  const methodRows = data.methodMix.map((r) => ({
-    method: r.method,
-    count: r.count,
-  }))
-
-  const openCloseByDayRows = data.openCloseByDay.map((r) => ({
-    day: r.key,
-    opened: r.opened,
-    closed: r.closed,
-  }))
-
-  const openCloseByHourRows = data.openCloseByHour.map((r) => ({
-    hour: r.key,
-    opened: r.opened,
-    closed: r.closed,
-  }))
-
-  const unlockedByDayRows = data.unlockedByDay.map((r) => ({
-    day: r.key,
-    unlocked_seconds_estimated: r.unlockedSeconds,
-    unlocked_minutes_estimated: Math.round(r.unlockedSeconds / 60),
-  }))
-
-  const unauthorizedByDayRows = data.unauthorizedOpenByDay.map((r) => ({
-    day: r.key,
-    unauthorized_open_seconds_estimated: r.unauthorizedOpenSeconds,
-    unauthorized_open_minutes_estimated: Math.round(r.unauthorizedOpenSeconds / 60),
-  }))
-
-  const anomalyRows = data.anomalies.map((a) => ({
-    door_id: a.doorId,
-    door_name: a.doorName,
-    type: a.type,
-    bucket: a.bucket,
-    severity: a.severity,
-    total: a.total,
-    denied: a.denied,
-    denial_rate: a.denialRate,
-    baseline_rate: a.baselineRate,
-    baseline_volume: a.baselineVolume,
-    reason: a.reason,
-  }))
-
-  const zip = buildZip([
-    { name: 'kpi_summary.csv', content: toCsv(kpiRows) },
-    { name: 'analytics_preferences.csv', content: toCsv(preferenceRows) },
-    { name: 'busiest_doors.csv', content: toCsv(busiestRows) },
-    { name: 'denial_by_day.csv', content: toCsv(byDayRows) },
-    { name: 'denial_by_hour.csv', content: toCsv(byHourRows) },
-    { name: 'open_close_by_day.csv', content: toCsv(openCloseByDayRows) },
-    { name: 'open_close_by_hour.csv', content: toCsv(openCloseByHourRows) },
-    { name: 'unlocked_by_day.csv', content: toCsv(unlockedByDayRows) },
-    { name: 'unauthorized_open_by_day.csv', content: toCsv(unauthorizedByDayRows) },
-    { name: 'method_mix.csv', content: toCsv(methodRows) },
-    { name: 'anomalies.csv', content: toCsv(anomalyRows) },
-  ])
-
-  return new Response(new Uint8Array(zip), {
+  return new Response(buf, {
     headers: {
-      'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename="analytics-${tenant.name}.zip"`,
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="analytics-${tenant.name}.xlsx"`,
     },
   })
 }

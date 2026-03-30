@@ -37,6 +37,7 @@ interface Props {
   refreshTrigger?: number
   accessLogsOverride?: UnifiLogEntry[] | null
   accessLogsLoadingOverride?: boolean
+  onRealtimeEvent?: () => void
 }
 
 export function ActivityLogTable({
@@ -50,6 +51,7 @@ export function ActivityLogTable({
   refreshTrigger,
   accessLogsOverride,
   accessLogsLoadingOverride = false,
+  onRealtimeEvent,
 }: Props) {
   const [logs, setLogs] = useState<UnifiLogEntry[]>([])
   const [pendingLogs, setPendingLogs] = useState<UnifiLogEntry[]>([])
@@ -59,6 +61,7 @@ export function ActivityLogTable({
   const [logFilter, setLogFilter] = useState<LogFilter>('access')
   const currentLogsRef = useRef<UnifiLogEntry[]>([])
   const fetchCountRef = useRef(0)
+  const lastRealtimeFetchRef = useRef(0)
 
   // topic drives what UniFi returns for the access tab
   const topic = 'door_openings'
@@ -135,6 +138,16 @@ export function ActivityLogTable({
     setPendingLogs([])
   }, [pendingLogs])
 
+  function extractDoorIdFromSsePayload(payload: Record<string, unknown>): string | null {
+    const data = payload.data as Record<string, unknown> | undefined
+    const location = data?.location as Record<string, unknown> | undefined
+    const device = data?.device as Record<string, unknown> | undefined
+    const eventObjId = typeof payload.event_object_id === 'string' ? payload.event_object_id : null
+    const locationId = typeof location?.id === 'string' ? location.id : null
+    const deviceLocationId = typeof device?.location_id === 'string' ? device.location_id : null
+    return locationId ?? deviceLocationId ?? eventObjId
+  }
+
   // Keep ref in sync when logs are replaced by full reload
   useEffect(() => { currentLogsRef.current = logs }, [logs])
 
@@ -167,6 +180,33 @@ export function ActivityLogTable({
     const id = setInterval(() => fetchLogs(true), 60_000)
     return () => clearInterval(id)
   }, [fetchLogs, useExternalAccess, logFilter])
+
+  // Real-time updates via existing tenant SSE bridge
+  useEffect(() => {
+    if (!tenantId) return
+
+    const es = new EventSource(`/api/tenants/${tenantId}/events`)
+    const onDoorUpdate = (evt: MessageEvent) => {
+      try {
+        const payload = JSON.parse(evt.data) as Record<string, unknown>
+        const sseDoorId = extractDoorIdFromSsePayload(payload)
+        if (doorId && sseDoorId && sseDoorId !== doorId) return
+      } catch {
+        // If payload parse fails, still do a guarded refresh.
+      }
+
+      const now = Date.now()
+      if (now - lastRealtimeFetchRef.current < 1500) return
+      lastRealtimeFetchRef.current = now
+      if (useExternalAccess && logFilter === 'access') {
+        onRealtimeEvent?.()
+      }
+      void fetchLogs(true)
+    }
+
+    es.addEventListener('door_update', onDoorUpdate as EventListener)
+    return () => es.close()
+  }, [tenantId, doorId, fetchLogs, useExternalAccess, logFilter, onRealtimeEvent])
 
   async function handleExport() {
     setExporting(true)

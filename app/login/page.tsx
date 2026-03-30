@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { startAuthentication } from '@simplewebauthn/browser'
 import { Eye, EyeOff, KeyRound, Mail, Smartphone } from 'lucide-react'
 import { OtpInput } from '@/components/OtpInput'
+import { accentVars } from '@/lib/branding'
 
 type MfaMethod = 'email' | 'totp' | 'passkey'
 
@@ -26,6 +27,32 @@ export default function LoginPage() {
   const [code, setCode] = useState('')
   const [policyNotice, setPolicyNotice] = useState('')
   const [policyEnforceAt, setPolicyEnforceAt] = useState<string>('')
+  const [brandPortalName, setBrandPortalName] = useState('Access Portal')
+  const [brandLogoUrl, setBrandLogoUrl] = useState('')
+  const [brandAccent, setBrandAccent] = useState('#006FFF')
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadBranding() {
+      try {
+        const res = await fetch('/api/branding/login', { cache: 'no-store' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || cancelled) return
+        const b = data.branding as { portalName?: string; logoUrl?: string; accentColor?: string } | null | undefined
+        if (!b) return
+        if (b.portalName) setBrandPortalName(b.portalName)
+        if (b.logoUrl) setBrandLogoUrl(b.logoUrl)
+        if (b.accentColor) setBrandAccent(b.accentColor)
+      } catch {
+        // keep default branding
+      }
+    }
+    void loadBranding()
+    return () => { cancelled = true }
+  }, [])
+
+  const { brand, brandDark } = accentVars(brandAccent)
+  const primaryButtonStyle: React.CSSProperties = { backgroundColor: brand }
 
   const passkeyAutoTriggered = useRef(false)
   useEffect(() => {
@@ -203,21 +230,28 @@ export default function LoginPage() {
     return 'Use your device passkey'
   }
   const methodIcon = (method: MfaMethod) => {
-    if (method === 'email') return <Mail className="w-5 h-5 text-[#006FFF]" />
-    if (method === 'totp') return <Smartphone className="w-5 h-5 text-[#006FFF]" />
-    return <KeyRound className="w-5 h-5 text-[#006FFF]" />
+    if (method === 'email') return <Mail className="w-5 h-5" style={{ color: brand }} />
+    if (method === 'totp') return <Smartphone className="w-5 h-5" style={{ color: brand }} />
+    return <KeyRound className="w-5 h-5" style={{ color: brand }} />
   }
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-[#006FFF] mb-4">
-            <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-white" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-            </svg>
+          <div
+            className="inline-flex items-center justify-center w-12 h-12 rounded-xl mb-4 overflow-hidden"
+            style={{ backgroundColor: brand }}
+          >
+            {brandLogoUrl ? (
+              <img src={brandLogoUrl} alt={brandPortalName} className="w-full h-full object-cover" />
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" className="w-7 h-7 text-white" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            )}
           </div>
-          <h1 className="text-2xl font-semibold text-gray-900">Access Portal</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{brandPortalName}</h1>
           <p className="text-sm text-gray-500 mt-1">{step === 'password' ? 'Sign in to your account' : 'Verify your identity'}</p>
         </div>
 
@@ -272,11 +306,18 @@ export default function LoginPage() {
                   </button>
                 </div>
                 <div className="mt-1 text-right">
-                  <Link href="/forgot-password" className="text-xs text-[#006FFF] hover:underline">Forgot password?</Link>
+                  <Link href="/forgot-password" className="text-xs hover:underline" style={{ color: brand }}>Forgot password?</Link>
                 </div>
               </div>
 
-              <button type="submit" className="btn-primary w-full" disabled={loading}>
+              <button
+                type="submit"
+                className="w-full text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                style={primaryButtonStyle}
+                onMouseEnter={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brandDark }}
+                onMouseLeave={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brand }}
+                disabled={loading}
+              >
                 {loading ? 'Signing in...' : 'Sign in'}
               </button>
             </form>
@@ -292,7 +333,10 @@ export default function LoginPage() {
               )}
               <button
                 type="button"
-                className="btn-primary w-full"
+                className="w-full text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                style={primaryButtonStyle}
+                onMouseEnter={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brandDark }}
+                onMouseLeave={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brand }}
                 disabled={loading}
                 onClick={async () => {
                   setLoading(true)
@@ -355,7 +399,7 @@ export default function LoginPage() {
                       }}
                     >
                       <div className="flex items-center gap-3">
-                        <span className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                        <span className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${brand}14` }}>
                           {methodIcon(method)}
                         </span>
                         <div>
@@ -369,7 +413,15 @@ export default function LoginPage() {
               ) : selectedMethod === 'passkey' ? (
                 <div className="space-y-3">
                   <p className="text-sm text-gray-600">Use your selected method: {methodLabel(selectedMethod)}</p>
-                  <button type="button" className="btn-primary w-full" onClick={verifyPasskey} disabled={loading}>
+                  <button
+                    type="button"
+                    className="w-full text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    style={primaryButtonStyle}
+                    onMouseEnter={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brandDark }}
+                    onMouseLeave={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brand }}
+                    onClick={verifyPasskey}
+                    disabled={loading}
+                  >
                     {loading ? 'Waiting for passkey...' : 'Use passkey'}
                   </button>
                 </div>
@@ -380,7 +432,14 @@ export default function LoginPage() {
                     <label className="label">{codePrompt}</label>
                     <OtpInput value={code} onChange={setCode} onComplete={submitCode} disabled={loading} autoFocus />
                   </div>
-                  <button type="submit" className="btn-primary w-full" disabled={loading || code.length !== 6}>
+                  <button
+                    type="submit"
+                    className="w-full text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                    style={primaryButtonStyle}
+                    onMouseEnter={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brandDark }}
+                    onMouseLeave={(e) => { ;(e.currentTarget as HTMLButtonElement).style.backgroundColor = brand }}
+                    disabled={loading || code.length !== 6}
+                  >
                     {loading ? 'Verifying...' : 'Verify'}
                   </button>
                   {selectedMethod === 'email' && (

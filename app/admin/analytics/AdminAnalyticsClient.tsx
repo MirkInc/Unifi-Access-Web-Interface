@@ -114,7 +114,7 @@ export function AdminAnalyticsClient({ tenants, doors }: Props) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = 'analytics-export.zip'
+      a.download = 'analytics-export.xlsx'
       a.click()
       URL.revokeObjectURL(url)
     } finally {
@@ -139,7 +139,7 @@ export function AdminAnalyticsClient({ tenants, doors }: Props) {
             </button>
             <button className="btn-secondary text-xs flex items-center gap-2" onClick={exportZip} disabled={exporting || loading}>
               <Download className="w-3.5 h-3.5" />
-              {exporting ? 'Exporting...' : 'Export ZIP'}
+              {exporting ? 'Exporting...' : 'Export XLSX'}
             </button>
           </div>
         </div>

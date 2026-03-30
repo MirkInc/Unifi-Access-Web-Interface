@@ -31,6 +31,12 @@ export default async function TenantsPage() {
       doorCount: doorCountMap[t._id.toString()] ?? 0,
       webhookId: t.webhookId ?? null,
       webhookBaseUrl: t.webhookBaseUrl ?? null,
+      branding: {
+        portalName: t.branding?.portalName ?? '',
+        logoUrl: t.branding?.logoUrl ?? '',
+        accentColor: t.branding?.accentColor ?? '',
+        loginHosts: t.branding?.loginHosts ?? [],
+      },
     }
   })
 

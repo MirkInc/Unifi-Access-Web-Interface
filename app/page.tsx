@@ -51,7 +51,7 @@ export default async function HomePage() {
   }
 
   const tenants = await Tenant.find({ _id: { $in: accessibleTenantIds } })
-    .select('name unifiHost unifiApiKey timezone')
+    .select('name unifiHost unifiApiKey timezone branding')
     .sort({ name: 1 })
     .lean()
 
@@ -135,6 +135,7 @@ export default async function HomePage() {
   const currentTenantId = accessibleTenantIds.includes(cookieTenantId ?? '')
     ? cookieTenantId!
     : accessibleTenantIds[0]
+  const currentTenant = tenants.find((t) => t._id.toString() === currentTenantId)
 
   return (
     <SiteManagerClient
@@ -143,6 +144,11 @@ export default async function HomePage() {
       currentTenantId={currentTenantId}
       userName={sessionUser.name ?? sessionUser.email ?? 'User'}
       isAdmin={sessionUser.role === 'admin'}
+      currentBranding={{
+        portalName: currentTenant?.branding?.portalName ?? '',
+        logoUrl: currentTenant?.branding?.logoUrl ?? '',
+        accentColor: currentTenant?.branding?.accentColor ?? '',
+      }}
     />
   )
 }

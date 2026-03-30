@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils'
 import { DateRangePicker } from '@/components/DateRangePicker'
 import { UnlockScheduleCard } from './UnlockScheduleCard'
 import type { DoorStatus, UnifiLogEntry } from '@/types'
+import { accentVars } from '@/lib/branding'
 
 interface Props {
   door: DoorStatus
@@ -28,6 +29,11 @@ interface Props {
   scheduleId?: string
   scheduleName?: string
   analyticsHref?: string
+  branding?: {
+    portalName?: string
+    logoUrl?: string
+    accentColor?: string
+  }
 }
 
 const QUICK_RANGES: { label: string; value: RangeType }[] = [
@@ -97,7 +103,7 @@ function useSessionBoolean(key: string, defaultValue: boolean) {
   return [value, setValue] as const
 }
 
-export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref, scheduleId, scheduleName, analyticsHref }: Props) {
+export function DoorDetailClient({ door: initialDoor, permissions, controllerError, timezone, doorName, backHref, scheduleId, scheduleName, analyticsHref, branding }: Props) {
   const [door, setDoor] = useState(initialDoor)
   const [refreshKey, setRefreshKey] = useState(0)
   const controlRef = useRef<HTMLDivElement>(null)
@@ -106,6 +112,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const statusQueuedRef = useRef(false)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastStatusFetchAtRef = useRef(0)
+  const lastLogRefreshAtRef = useRef(0)
 
   const [scheduleOpen, setScheduleOpen] = useSessionBoolean('door.section.unlockSchedule', true)
   const [chartOpen, setChartOpen] = useSessionBoolean('door.section.activityChart', true)
@@ -240,6 +247,13 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
     }, 1500)
   }, [fetchStatusNow])
 
+  const handleRealtimeLogEvent = useCallback(() => {
+    const now = Date.now()
+    if (now - lastLogRefreshAtRef.current < 1500) return
+    lastLogRefreshAtRef.current = now
+    setRefreshKey((k) => k + 1)
+  }, [])
+
   useEffect(() => {
     queueStatusRefresh(true)
   }, [queueStatusRefresh])
@@ -271,6 +285,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
     door.positionStatus === 'open' &&
     door.lockStatus === 'lock' &&
     door.lockRule?.type !== 'keep_lock'
+  const { brand, brandDark } = accentVars(branding?.accentColor)
 
   return (
     <>
@@ -285,10 +300,14 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
           {door.lockStatus && (
             <span
               ref={badgeRef}
-              style={{ opacity: 0, transition: 'opacity 0.15s' }}
+              style={{
+                opacity: 0,
+                transition: 'opacity 0.15s',
+                ...(isUnlocked ? { color: brand, backgroundColor: `${brand}1A` } : {}),
+              }}
               className={cn(
                 'text-xs font-medium px-2 py-0.5 rounded-full',
-                isUnlocked ? 'bg-[#006FFF]/10 text-[#006FFF]' : 'bg-gray-100 text-gray-600'
+                isUnlocked ? 'bg-blue-50' : 'bg-gray-100 text-gray-600'
               )}
             >
               {isUnlocked ? 'Unlocked' : 'Locked'}
@@ -298,7 +317,10 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
             {permissions.canViewAnalytics && analyticsHref && (
               <Link
                 href={analyticsHref}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-[#006FFF] text-white text-xs font-semibold px-3 py-1.5 shadow-sm hover:bg-[#0057cc] focus:outline-none focus:ring-2 focus:ring-[#006FFF]/30 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-lg text-white text-xs font-semibold px-3 py-1.5 shadow-sm focus:outline-none focus:ring-2 transition-colors"
+                style={{ backgroundColor: brand }}
+                onMouseEnter={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = brandDark }}
+                onMouseLeave={(e) => { ;(e.currentTarget as HTMLAnchorElement).style.backgroundColor = brand }}
               >
                 <svg viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
                   <path d="M3 4.75A1.75 1.75 0 0 1 4.75 3h10.5A1.75 1.75 0 0 1 17 4.75v10.5A1.75 1.75 0 0 1 15.25 17H4.75A1.75 1.75 0 0 1 3 15.25V4.75ZM6 13.25a.75.75 0 1 0 1.5 0V11a.75.75 0 0 0-1.5 0v2.25Zm3.25 0a.75.75 0 1 0 1.5 0V8.75a.75.75 0 0 0-1.5 0v4.5Zm3.25 0a.75.75 0 1 0 1.5 0V6.5a.75.75 0 0 0-1.5 0v6.75Z" />
@@ -318,7 +340,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
         )}
 
         <div ref={controlRef} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} />
+          <DoorControl door={door} permissions={permissions} onAction={refresh} timezone={timezone} branding={branding} />
 
           <div className="card p-5 space-y-3">
             <h2 className="font-semibold text-gray-900">Door Status</h2>
@@ -334,9 +356,9 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
                   isUnauthorizedOpening
                     ? 'text-red-600 font-medium'
                     : door.lockStatus === 'unlock'
-                    ? 'text-[#006FFF] font-medium'
+                    ? 'font-medium'
                     : 'text-gray-700'
-                }>
+                } style={door.lockStatus === 'unlock' && !isUnauthorizedOpening ? { color: brand } : undefined}>
                   {door.lockStatus === 'unlock' ? 'Unlocked' : door.lockStatus === 'lock' ? 'Locked' : '-'}
                 </span>
               </div>
@@ -395,12 +417,13 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
                     <button
                       key={r.value}
                       onClick={() => setRange(r.value)}
-                      className={cn(
+                    className={cn(
                         'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
                         range === r.value
-                          ? 'bg-[#006FFF] text-white shadow-sm'
+                          ? 'text-white shadow-sm'
                           : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
                       )}
+                      style={range === r.value ? { backgroundColor: brand } : undefined}
                     >
                       {r.label}
                     </button>
@@ -471,6 +494,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
                     refreshTrigger={refreshKey}
                     accessLogsOverride={sharedLogs}
                     accessLogsLoadingOverride={sharedLogsLoading}
+                    onRealtimeEvent={handleRealtimeLogEvent}
                   />
                 </div>
               )}

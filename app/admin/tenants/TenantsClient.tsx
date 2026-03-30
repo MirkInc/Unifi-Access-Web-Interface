@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { TimezoneSelect } from '@/components/TimezoneSelect'
 
 interface Tenant {
   _id: string
@@ -16,6 +15,12 @@ interface Tenant {
   doorCount: number
   webhookId: string | null
   webhookBaseUrl: string | null
+  branding?: {
+    portalName?: string
+    logoUrl?: string
+    accentColor?: string
+    loginHosts?: string[]
+  }
 }
 
 interface Props { tenants: Tenant[] }
@@ -59,7 +64,6 @@ function TenantForm({
     description: string
     unifiHost: string
     unifiApiKey: string
-    timezone: string
   }) => Promise<void>
   onCancel: () => void
 }) {
@@ -70,7 +74,6 @@ function TenantForm({
   const [protocol, setProtocol] = useState(parsed?.protocol ?? 'https')
   const [host, setHost] = useState(parsed?.host ?? '')
   const [port, setPort] = useState(parsed?.port ?? '12445')
-  const [timezone, setTimezone] = useState(initial?.timezone ?? '')
   const [unifiApiKey, setUnifiApiKey] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -80,7 +83,7 @@ function TenantForm({
     setLoading(true); setError('')
     const unifiHost = `${protocol}://${host}:${port}`
     try {
-      await onSave({ name, description, unifiHost, unifiApiKey, timezone })
+      await onSave({ name, description, unifiHost, unifiApiKey })
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -170,12 +173,6 @@ function TenantForm({
           />
         </div>
 
-        {/* Timezone */}
-        <div className="sm:col-span-2">
-          <label className="label">Controller Timezone</label>
-          <TimezoneSelect value={timezone} onChange={setTimezone} />
-          <p className="text-xs text-gray-400 mt-1">Times (schedule end, unlock expiry) will display in this zone</p>
-        </div>
       </div>
 
       <div className="flex gap-2 justify-end pt-2">
@@ -283,7 +280,6 @@ export function TenantsClient({ tenants }: Props) {
     description: string
     unifiHost: string
     unifiApiKey: string
-    timezone: string
   }) {
     const res = await fetch('/api/tenants', {
       method: 'POST',
@@ -300,7 +296,6 @@ export function TenantsClient({ tenants }: Props) {
     description: string
     unifiHost: string
     unifiApiKey: string
-    timezone: string
   }) {
     const res = await fetch(`/api/tenants/${id}`, {
       method: 'PUT',

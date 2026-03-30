@@ -12,10 +12,11 @@ export default async function UserAccessPage({ params }: PageProps) {
   const { id } = await params
   await connectDB()
 
-  const [user, tenants, appSetting] = await Promise.all([
+  const [user, tenants, appSetting, allUsers] = await Promise.all([
     User.findById(id).select('-passwordHash').lean(),
     Tenant.find().sort({ name: 1 }).lean(),
     AppSetting.findOne({ key: 'global' }).select('portalUrls').lean(),
+    User.find({ _id: { $ne: id } }).select('name email tenantAccess').sort({ name: 1 }).lean(),
   ])
   if (!user) notFound()
 
@@ -75,6 +76,36 @@ export default async function UserAccessPage({ params }: PageProps) {
       doorsByTenant={doorsByTenant}
       initialAccess={tenantAccessMap}
       portalUrls={appSetting?.portalUrls ?? []}
+      copySources={allUsers.map((u) => {
+        const src: Record<string, Record<string, {
+          canUnlock: boolean
+          canEndLockSchedule: boolean
+          canTempLock: boolean
+          canEndTempLock: boolean
+          canViewLogs: boolean
+          canViewAnalytics: boolean
+        }>> = {}
+        for (const ta of u.tenantAccess ?? []) {
+          const tid = ta.tenantId.toString()
+          src[tid] = {}
+          for (const dp of ta.doorPermissions ?? []) {
+            src[tid][dp.doorId.toString()] = {
+              canUnlock: dp.canUnlock,
+              canEndLockSchedule: dp.canEndLockSchedule,
+              canTempLock: dp.canTempLock,
+              canEndTempLock: dp.canEndTempLock,
+              canViewLogs: dp.canViewLogs,
+              canViewAnalytics: dp.canViewAnalytics === true,
+            }
+          }
+        }
+        return {
+          _id: u._id.toString(),
+          name: u.name,
+          email: u.email,
+          access: src,
+        }
+      })}
     />
   )
 }

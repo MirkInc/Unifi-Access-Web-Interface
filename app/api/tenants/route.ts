@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { connectDB } from '@/lib/mongodb'
 import Tenant from '@/models/Tenant'
 import { writeAudit } from '@/lib/audit'
+import { sanitizeBranding } from '@/lib/branding'
 
 export async function GET() {
   const session = await getServerSession(authOptions)
@@ -24,7 +25,7 @@ export async function POST(req: Request) {
   const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
-  const { name, description, unifiHost, unifiApiKey, timezone } = body
+  const { name, description, unifiHost, unifiApiKey, timezone, branding } = body
 
   if (!name || !unifiHost || !unifiApiKey) {
     return NextResponse.json({ error: 'name, unifiHost, and unifiApiKey are required' }, { status: 400 })
@@ -37,6 +38,7 @@ export async function POST(req: Request) {
     unifiHost,
     unifiApiKey,
     timezone: timezone ?? '',
+    branding: sanitizeBranding(branding),
   })
   await writeAudit({
     req,

@@ -6,6 +6,7 @@ import Tenant from '@/models/Tenant'
 import Door from '@/models/Door'
 import User from '@/models/User'
 import { writeAudit } from '@/lib/audit'
+import { sanitizeBranding } from '@/lib/branding'
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -33,16 +34,17 @@ export async function PUT(req: Request, { params }: Params) {
   const sessionUser = session.user as { id?: string; name?: string; email?: string; role?: string }
 
   const body = await req.json()
-  const { name, description, unifiHost, unifiApiKey, timezone } = body
+  const { name, description, unifiHost, unifiApiKey, timezone, branding } = body
 
   await connectDB()
 
-  const update: Record<string, string | null> = {
+  const update: Record<string, unknown> = {
     name,
     description,
     unifiHost,
-    timezone: timezone ?? '',
   }
+  if (typeof timezone === 'string') update.timezone = timezone
+  if (branding !== undefined) update.branding = sanitizeBranding(branding)
   if (unifiApiKey?.trim()) update.unifiApiKey = unifiApiKey.trim()
 
   try {

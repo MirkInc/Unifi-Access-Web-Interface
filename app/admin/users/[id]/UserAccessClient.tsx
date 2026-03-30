@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Eye, EyeOff } from 'lucide-react'
+import * as Select from '@radix-ui/react-select'
+import { Check, ChevronDown, Eye, EyeOff } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface Door { _id: string; name: string }
@@ -52,9 +53,22 @@ interface Props {
   doorsByTenant: Record<string, Door[]>
   initialAccess: Record<string, Record<string, DoorPerms>>
   portalUrls: string[]
+  copySources: Array<{
+    _id: string
+    name: string
+    email: string
+    access: Record<string, Record<string, DoorPerms>>
+  }>
 }
 
-export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, portalUrls }: Props) {
+export function UserAccessClient({
+  user,
+  tenants,
+  doorsByTenant,
+  initialAccess,
+  portalUrls,
+  copySources,
+}: Props) {
   const router = useRouter()
 
   // Profile fields
@@ -76,13 +90,13 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
   // Access state
   const [access, setAccess] = useState<Record<string, Record<string, DoorPerms>>>(initialAccess)
   const [expandedTenants, setExpandedTenants] = useState<Set<string>>(new Set(Object.keys(initialAccess)))
+  const [selectedCopySourceId, setSelectedCopySourceId] = useState('')
 
   // Save state
   const [saving, setSaving] = useState(false)
   const [resendingInvite, setResendingInvite] = useState(false)
   const [success, setSuccess] = useState('')
   const [error, setError] = useState('')
-
 
   async function handleResendInvite() {
     setResendingInvite(true)
@@ -190,6 +204,15 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
       if (enable) for (const d of doors) next[tid][d._id] = { ...DEFAULT_PERMS }
       return next
     })
+  }
+
+  function applyCopySource() {
+    const source = copySources.find((u) => u._id === selectedCopySourceId)
+    if (!source) return
+    setAccess(JSON.parse(JSON.stringify(source.access)) as Record<string, Record<string, DoorPerms>>)
+    setExpandedTenants(new Set(Object.keys(source.access)))
+    setSuccess(`Copied permissions from ${source.name}.`)
+    setError('')
   }
 
   return (
@@ -322,6 +345,50 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
 
       {/* Access */}
       <h2 className="font-semibold text-gray-900 mb-4">Site &amp; Door Access</h2>
+      <div className="card p-4 mb-4">
+        <div className="rounded-xl border border-gray-200 p-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Copy Permissions</p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Select.Root value={selectedCopySourceId} onValueChange={setSelectedCopySourceId}>
+              <Select.Trigger className="flex-1 flex items-center gap-2 pl-3 pr-2.5 py-2 text-sm text-gray-700 bg-white border border-gray-200 rounded-xl shadow-sm hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006FFF]/20 focus:border-[#006FFF] transition-colors">
+                <Select.Value placeholder="Select user to copy from" />
+                <Select.Icon className="ml-auto">
+                  <ChevronDown className="w-4 h-4 text-gray-400" />
+                </Select.Icon>
+              </Select.Trigger>
+              <Select.Portal>
+                <Select.Content className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden z-50 min-w-[320px]" position="popper" sideOffset={4}>
+                  <Select.Viewport className="p-1">
+                    {copySources.map((src) => (
+                      <Select.Item
+                        key={src._id}
+                        value={src._id}
+                        className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 rounded-lg cursor-pointer hover:bg-gray-50 focus:bg-gray-50 outline-none data-[highlighted]:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate">{src.name}</p>
+                          <p className="text-xs text-gray-400 truncate">{src.email}</p>
+                        </div>
+                        <Select.ItemIndicator className="ml-auto">
+                          <Check className="w-3.5 h-3.5 text-[#006FFF]" />
+                        </Select.ItemIndicator>
+                      </Select.Item>
+                    ))}
+                  </Select.Viewport>
+                </Select.Content>
+              </Select.Portal>
+            </Select.Root>
+            <button
+              type="button"
+              className="btn-secondary whitespace-nowrap"
+              disabled={!selectedCopySourceId}
+              onClick={applyCopySource}
+            >
+              Copy Access
+            </button>
+          </div>
+        </div>
+      </div>
 
       {tenants.length === 0 ? (
         <div className="card p-8 text-center text-gray-400">
@@ -375,53 +442,83 @@ export function UserAccessClient({ user, tenants, doorsByTenant, initialAccess, 
                 </div>
 
                 {isEnabled && isExpanded && (
-                  <div className="overflow-x-auto">
+                  <div className="p-4 space-y-3">
                     {doors.length === 0 ? (
                       <p className="text-sm text-gray-400 text-center py-6">
                         No doors synced for this site.{' '}
                         <Link href="/admin/tenants" className="text-[#006FFF] hover:underline">Sync doors</Link>
                       </p>
                     ) : (
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="text-left text-xs font-medium text-gray-400 uppercase tracking-wide border-b">
-                            <th className="px-4 py-2 w-8"></th>
-                            <th className="px-4 py-2">Door</th>
-                            {PERM_LABELS.map((p) => (
-                              <th key={p.key} className="px-3 py-2 text-center whitespace-nowrap" title={p.desc}>{p.label}</th>
-                            ))}
-                            <th className="px-3 py-2 text-center">All</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                          {doors.map((door) => {
-                            const doorEnabled = hasDoorAccess(tenant._id, door._id)
-                            const perms = access[tenant._id]?.[door._id] ?? DEFAULT_PERMS
-                            return (
-                              <tr key={door._id} className={cn('transition-colors', doorEnabled ? 'bg-white' : 'bg-gray-50/50')}>
-                                <td className="px-4 py-2">
-                                  <input type="checkbox" checked={doorEnabled} onChange={() => toggleDoor(tenant._id, door._id)} className="w-4 h-4 accent-[#006FFF] cursor-pointer" />
-                                </td>
-                                <td className="px-4 py-2 font-medium text-gray-800 whitespace-nowrap">{door.name}</td>
+                      doors.map((door) => {
+                        const doorEnabled = hasDoorAccess(tenant._id, door._id)
+                        const perms = access[tenant._id]?.[door._id] ?? DEFAULT_PERMS
+                        return (
+                          <div
+                            key={door._id}
+                            className={cn(
+                              'rounded-xl border p-3 transition-colors',
+                              doorEnabled ? 'border-gray-200 bg-white' : 'border-gray-100 bg-gray-50/60'
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={doorEnabled}
+                                onChange={() => toggleDoor(tenant._id, door._id)}
+                                className="w-4 h-4 accent-[#006FFF] cursor-pointer"
+                                id={`door-${tenant._id}-${door._id}`}
+                              />
+                              <label
+                                htmlFor={`door-${tenant._id}-${door._id}`}
+                                className={cn('font-medium cursor-pointer', doorEnabled ? 'text-gray-900' : 'text-gray-500')}
+                              >
+                                {door.name}
+                              </label>
+                              {doorEnabled && (
+                                <div className="ml-auto flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                    onClick={() => setAllPermsForDoor(tenant._id, door._id, true)}
+                                  >
+                                    All
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="text-xs text-gray-500 hover:text-gray-700"
+                                    onClick={() => setAllPermsForDoor(tenant._id, door._id, false)}
+                                  >
+                                    None
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {doorEnabled && (
+                              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                                 {PERM_LABELS.map((p) => (
-                                  <td key={p.key} className="px-3 py-2 text-center">
-                                    <input
-                                      type="checkbox"
-                                      checked={doorEnabled && perms[p.key]}
-                                      disabled={!doorEnabled}
-                                      onChange={(e) => setPerm(tenant._id, door._id, p.key, e.target.checked)}
-                                      className="w-4 h-4 accent-[#006FFF] cursor-pointer disabled:opacity-30"
-                                    />
-                                  </td>
+                                  <button
+                                    key={p.key}
+                                    type="button"
+                                    onClick={() => setPerm(tenant._id, door._id, p.key, !perms[p.key])}
+                                    className={cn(
+                                      'text-left rounded-lg border px-3 py-2 transition-colors',
+                                      perms[p.key]
+                                        ? 'border-[#006FFF]/40 bg-[#006FFF]/10'
+                                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                                    )}
+                                  >
+                                    <p className={cn('text-sm font-medium', perms[p.key] ? 'text-[#006FFF]' : 'text-gray-700')}>
+                                      {p.label}
+                                    </p>
+                                    <p className="text-xs text-gray-400 mt-0.5">{p.desc}</p>
+                                  </button>
                                 ))}
-                                <td className="px-3 py-2 text-center">
-                                  <button className="text-xs text-[#006FFF] hover:underline disabled:opacity-30" disabled={!doorEnabled} onClick={() => setAllPermsForDoor(tenant._id, door._id, true)}>All</button>
-                                </td>
-                              </tr>
-                            )
-                          })}
-                        </tbody>
-                      </table>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
                     )}
                   </div>
                 )}

@@ -15,6 +15,7 @@ interface Props {
   showAdminLink?: boolean
   labelOverride?: string
   activeItem?: 'tenant' | 'site-manager' | 'management-portal'
+  accentColor?: string
 }
 
 export function TenantSwitcher({
@@ -23,6 +24,7 @@ export function TenantSwitcher({
   showAdminLink,
   labelOverride,
   activeItem = 'tenant',
+  accentColor = '#006FFF',
 }: Props) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -91,14 +93,17 @@ export function TenantSwitcher({
                     'w-full flex items-center gap-3 px-4 py-2.5 hover:bg-gray-50 transition-colors text-left',
                     activeItem === 'tenant' && t._id === currentTenantId && 'bg-blue-50'
                   )}
+                  style={activeItem === 'tenant' && t._id === currentTenantId ? { backgroundColor: `${accentColor}14` } : undefined}
                   onClick={() => setOpen(false)}
                 >
                   <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />
                   <span className={cn(
                     'flex-1 text-sm truncate',
-                    activeItem === 'tenant' && t._id === currentTenantId ? 'font-semibold text-[#006FFF]' : 'text-gray-700'
+                    activeItem === 'tenant' && t._id === currentTenantId ? 'font-semibold' : 'text-gray-700'
                   )}>
+                    <span style={activeItem === 'tenant' && t._id === currentTenantId ? { color: accentColor } : undefined}>
                     {t.name}
+                    </span>
                   </span>
                 </Link>
               ))
@@ -113,6 +118,7 @@ export function TenantSwitcher({
                 'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors',
                 activeItem === 'site-manager' && 'bg-blue-50'
               )}
+              style={activeItem === 'site-manager' ? { backgroundColor: `${accentColor}14` } : undefined}
               onClick={() => setOpen(false)}
             >
               <svg
@@ -120,12 +126,13 @@ export function TenantSwitcher({
                 fill="currentColor"
                 className={cn(
                   'w-4 h-4 flex-shrink-0',
-                  activeItem === 'site-manager' ? 'text-[#006FFF]' : 'text-gray-500'
+                  activeItem === 'site-manager' ? '' : 'text-gray-500'
                 )}
+                style={activeItem === 'site-manager' ? { color: accentColor } : undefined}
               >
                 <path fillRule="evenodd" d="M10 2a1 1 0 01.707.293l7 7A1 1 0 0118 10v7a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4H8v4a1 1 0 01-1 1H3a1 1 0 01-1-1v-7a1 1 0 01.293-.707l7-7A1 1 0 0110 2z" clipRule="evenodd" />
               </svg>
-              <span className={cn('text-sm font-medium', activeItem === 'site-manager' ? 'text-[#006FFF]' : 'text-gray-700')}>
+              <span className={cn('text-sm font-medium', activeItem === 'site-manager' ? '' : 'text-gray-700')} style={activeItem === 'site-manager' ? { color: accentColor } : undefined}>
                 Site Manager
               </span>
             </Link>
@@ -139,6 +146,7 @@ export function TenantSwitcher({
                   'w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors',
                   activeItem === 'management-portal' && 'bg-blue-50'
                 )}
+                style={activeItem === 'management-portal' ? { backgroundColor: `${accentColor}14` } : undefined}
                 onClick={() => setOpen(false)}
               >
                 <svg
@@ -146,12 +154,13 @@ export function TenantSwitcher({
                   fill="currentColor"
                   className={cn(
                     'w-4 h-4 flex-shrink-0',
-                    activeItem === 'management-portal' ? 'text-[#006FFF]' : 'text-gray-500'
+                    activeItem === 'management-portal' ? '' : 'text-gray-500'
                   )}
+                  style={activeItem === 'management-portal' ? { color: accentColor } : undefined}
                 >
                   <path fillRule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.489.804.804A1 1 0 0113 18H7a1 1 0 01-.707-1.707l.804-.804L7.22 15H5a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clipRule="evenodd" />
                 </svg>
-                <span className={cn('text-sm font-medium', activeItem === 'management-portal' ? 'text-[#006FFF]' : 'text-gray-700')}>
+                <span className={cn('text-sm font-medium', activeItem === 'management-portal' ? '' : 'text-gray-700')} style={activeItem === 'management-portal' ? { color: accentColor } : undefined}>
                   Admin
                 </span>
               </Link>

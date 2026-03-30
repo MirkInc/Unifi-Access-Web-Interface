@@ -129,6 +129,11 @@ export default async function TenantDoorDetailPage({ params }: PageProps) {
         currentTenantId={tenantId}
         userName={userName}
         isAdmin={sessionUser.role === 'admin'}
+        branding={{
+          portalName: tenant.branding?.portalName ?? '',
+          logoUrl: tenant.branding?.logoUrl ?? '',
+          accentColor: tenant.branding?.accentColor ?? '',
+        }}
       />
 
       <DoorDetailClient
@@ -141,6 +146,11 @@ export default async function TenantDoorDetailPage({ params }: PageProps) {
         analyticsHref={`/${tenantId}/${doorId}/analytics`}
         scheduleId={door.scheduleId ?? undefined}
         scheduleName={door.scheduleName ?? undefined}
+        branding={{
+          portalName: tenant.branding?.portalName ?? '',
+          logoUrl: tenant.branding?.logoUrl ?? '',
+          accentColor: tenant.branding?.accentColor ?? '',
+        }}
       />
     </div>
   )

@@ -137,6 +137,11 @@ export default async function TenantDashboardPage({ params }: PageProps) {
       userName={sessionUser.name ?? sessionUser.email ?? 'User'}
       isAdmin={sessionUser.role === 'admin'}
       timezone={selectedTenant.timezone || undefined}
+      branding={{
+        portalName: selectedTenant.branding?.portalName ?? '',
+        logoUrl: selectedTenant.branding?.logoUrl ?? '',
+        accentColor: selectedTenant.branding?.accentColor ?? '',
+      }}
     />
   )
 }
