@@ -21,6 +21,12 @@ export interface ITenant extends Document {
     hideUnlockedTime: boolean
     hideUnauthorizedOpenTime: boolean
   }
+  branding?: {
+    portalName?: string
+    logoUrl?: string
+    accentColor?: string
+    loginHosts?: string[]
+  }
   createdAt: Date
   updatedAt: Date
 }
@@ -51,6 +57,12 @@ const TenantSchema = new Schema<ITenant>(
     analyticsPrefs: {
       hideUnlockedTime: { type: Boolean, default: false },
       hideUnauthorizedOpenTime: { type: Boolean, default: false },
+    },
+    branding: {
+      portalName: { type: String, default: '' },
+      logoUrl: { type: String, default: '' },
+      accentColor: { type: String, default: '' },
+      loginHosts: { type: [String], default: [] },
     },
   },
   { timestamps: true }

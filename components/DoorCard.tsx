@@ -11,17 +11,18 @@ interface DoorCardProps {
   door: DoorStatus
   lockRule?: UnifiLockRule | null
   timezone?: string
+  accentColor?: string
 }
 
-function statusLabel(door: DoorStatus): { text: string; color: string } {
-  if (!door.isOnline) return { text: 'Offline', color: 'text-gray-400' }
+function statusLabel(door: DoorStatus): { text: string; color: 'red' | 'accent' | 'gray' } {
+  if (!door.isOnline) return { text: 'Offline', color: 'gray' }
   if (door.positionStatus === 'open' && door.lockStatus === 'lock') {
-    return { text: 'Unauthorized Opening', color: 'text-red-500' }
+    return { text: 'Unauthorized Opening', color: 'red' }
   }
   if (door.lockStatus === 'unlock') {
-    return { text: 'Unlocked', color: 'text-[#006FFF]' }
+    return { text: 'Unlocked', color: 'accent' }
   }
-  return { text: 'Locked', color: 'text-gray-600' }
+  return { text: 'Locked', color: 'gray' }
 }
 
 function ruleLabel(lockRule?: UnifiLockRule | null, timezone?: string): string | null {
@@ -39,12 +40,20 @@ function ruleLabel(lockRule?: UnifiLockRule | null, timezone?: string): string |
   return null
 }
 
-
-export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
+export function DoorCard({ door, lockRule, timezone, accentColor = '#006FFF' }: DoorCardProps) {
   const { text, color } = statusLabel(door)
   const rule = ruleLabel(lockRule, timezone)
   const isWarning = door.positionStatus === 'open' && door.lockStatus === 'lock' && lockRule?.type !== 'keep_lock'
   const isLockdown = lockRule?.type === 'keep_lock'
+
+  const textClass =
+    isLockdown
+      ? 'text-amber-600 font-medium'
+      : color === 'red'
+      ? 'text-red-500'
+      : color === 'gray'
+      ? 'text-gray-600'
+      : ''
 
   return (
     <Link
@@ -55,51 +64,44 @@ export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
         isWarning && 'ring-2 ring-red-500'
       )}
     >
-      {/* Keypad illustration */}
-      <div className={cn(
-        'relative rounded-lg flex items-center justify-center mb-3 aspect-[4/3] overflow-hidden transition-colors',
-        isLockdown ? 'bg-yellow-600' : isWarning ? 'bg-red-900' : door.lockStatus === 'unlock' ? 'bg-green-900' : 'bg-gray-800'
-      )}>
+      <div
+        className={cn(
+          'relative rounded-lg flex items-center justify-center mb-3 aspect-[4/3] overflow-hidden transition-colors',
+          isLockdown ? 'bg-yellow-600' : isWarning ? 'bg-red-900' : door.lockStatus === 'unlock' ? 'bg-green-900' : 'bg-gray-800'
+        )}
+      >
         <KeypadIcon className="h-20 w-auto" isUnlocked={door.lockStatus === 'unlock' && !isWarning && !isLockdown} isWarning={isWarning || isLockdown} />
 
-        {/* Lockdown banner */}
         {isLockdown && (
           <div className="absolute inset-x-0 top-0 bg-amber-500 text-white text-xs font-bold tracking-widest text-center py-1 uppercase">
             Lockdown
           </div>
         )}
 
-        {/* Unauthorized opening banner */}
         {isWarning && (
           <div className="absolute inset-x-0 top-0 bg-red-600 text-white text-xs font-bold tracking-widest text-center py-1 uppercase">
             Unauthorized Opening
           </div>
         )}
 
-        {/* Door position indicator */}
         {door.positionStatus && !isLockdown && !isWarning && (
-          <span className={cn(
-            'absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
-            door.positionStatus === 'open'
-              ? 'bg-amber-500/90 text-white'
-              : 'bg-black/40 text-white/70'
-          )}>
-            <span className={cn(
-              'w-1.5 h-1.5 rounded-full',
-              door.positionStatus === 'open' ? 'bg-white' : 'bg-white/60'
-            )} />
+          <span
+            className={cn(
+              'absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium',
+              door.positionStatus === 'open' ? 'bg-amber-500/90 text-white' : 'bg-black/40 text-white/70'
+            )}
+          >
+            <span className={cn('w-1.5 h-1.5 rounded-full', door.positionStatus === 'open' ? 'bg-white' : 'bg-white/60')} />
             {door.positionStatus === 'open' ? 'Open' : 'Closed'}
           </span>
         )}
-
       </div>
 
-      {/* Name & Status */}
       <div className="flex items-center justify-between gap-2 mt-auto">
         <div className="min-w-0">
           <p className="font-semibold text-gray-900 text-sm truncate">{door.name}</p>
-          <p className={cn('text-xs mt-0.5 truncate', isLockdown ? 'text-amber-600 font-medium' : color)}>
-            {rule ? `${text} · ${rule}` : text}
+          <p className={cn('text-xs mt-0.5 truncate', textClass)} style={!isLockdown && color === 'accent' ? { color: accentColor } : undefined}>
+            {rule ? `${text} - ${rule}` : text}
           </p>
         </div>
         {isWarning ? (
@@ -113,3 +115,4 @@ export function DoorCard({ door, lockRule, timezone }: DoorCardProps) {
     </Link>
   )
 }
+

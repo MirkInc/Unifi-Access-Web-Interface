@@ -5,6 +5,7 @@ import { DoorCard } from '@/components/DoorCard'
 import { AppHeader } from '@/components/AppHeader'
 import { cn } from '@/lib/utils'
 import type { DoorStatus, UnifiLockRule } from '@/types'
+import { accentVars } from '@/lib/branding'
 
 type StatusFilter = 'all' | 'locked' | 'unlocked' | 'open' | 'warning'
 
@@ -18,6 +19,11 @@ interface Props {
   userName: string
   isAdmin: boolean
   timezone?: string
+  branding?: {
+    portalName?: string
+    logoUrl?: string
+    accentColor?: string
+  }
 }
 
 export function DashboardClient({
@@ -29,9 +35,11 @@ export function DashboardClient({
   userName,
   isAdmin,
   timezone,
+  branding,
 }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const { brand } = accentVars(branding?.accentColor)
 
   // Live status overlay - keyed by MongoDB door id
   type LiveStatus = { lockStatus: DoorStatus['lockStatus']; positionStatus: DoorStatus['positionStatus']; isOnline: boolean; lockRule: UnifiLockRule | null }
@@ -150,7 +158,7 @@ export function DashboardClient({
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <AppHeader tenants={tenants} currentTenantId={currentTenantId} userName={userName} isAdmin={isAdmin} />
+      <AppHeader tenants={tenants} currentTenantId={currentTenantId} userName={userName} isAdmin={isAdmin} branding={branding} />
 
       {/* Main content */}
       <main className="max-w-6xl mx-auto px-4 py-6">
@@ -178,16 +186,17 @@ export function DashboardClient({
           </div>
 
           {/* Status filter tabs */}
-          <div className="flex items-center gap-0">
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
             {FILTERS.map((f) => (
               <button
                 key={f.key}
                 className={cn(
-                  'px-3 py-1.5 text-sm transition-colors border-b-2',
+                  'px-3 py-1.5 text-sm transition-colors rounded-lg',
                   statusFilter === f.key
-                    ? 'border-[#006FFF] text-[#006FFF] font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'font-medium text-white'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 )}
+                style={statusFilter === f.key ? { backgroundColor: brand } : undefined}
                 onClick={() => setStatusFilter(f.key)}
               >
                 {f.label}
@@ -211,7 +220,7 @@ export function DashboardClient({
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filtered.map((door) => (
-              <DoorCard key={door.id} door={door} lockRule={door.lockRule} timezone={timezone} />
+              <DoorCard key={door.id} door={door} lockRule={door.lockRule} timezone={timezone} accentColor={brand} />
             ))}
           </div>
         )}

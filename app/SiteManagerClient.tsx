@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { AppHeader } from '@/components/AppHeader'
 import { cn } from '@/lib/utils'
+import { accentVars } from '@/lib/branding'
 
 type ConsoleFilter = 'all' | 'connected' | 'attention'
 
@@ -28,11 +29,17 @@ interface Props {
   userName: string
   isAdmin: boolean
   emptyMessage?: string
+  currentBranding?: {
+    portalName?: string
+    logoUrl?: string
+    accentColor?: string
+  }
 }
 
-export function SiteManagerClient({ consoles, tenants, currentTenantId, userName, isAdmin, emptyMessage }: Props) {
+export function SiteManagerClient({ consoles, tenants, currentTenantId, userName, isAdmin, emptyMessage, currentBranding }: Props) {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<ConsoleFilter>('all')
+  const { brand } = accentVars(currentBranding?.accentColor)
 
   const counts = useMemo(() => ({
     all: consoles.length,
@@ -65,6 +72,7 @@ export function SiteManagerClient({ consoles, tenants, currentTenantId, userName
         isAdmin={isAdmin}
         tenantLabelOverride="Site Manager"
         activeNavItem="site-manager"
+        branding={currentBranding}
       />
 
       <main className="max-w-6xl mx-auto px-4 py-6">
@@ -82,16 +90,17 @@ export function SiteManagerClient({ consoles, tenants, currentTenantId, userName
             />
           </div>
 
-          <div className="flex items-center gap-0">
+          <div className="flex items-center gap-1 bg-white border border-gray-200 rounded-xl p-1">
             {filters.map((f) => (
               <button
                 key={f.key}
                 className={cn(
-                  'px-3 py-1.5 text-sm transition-colors border-b-2',
+                  'px-3 py-1.5 text-sm transition-colors rounded-lg',
                   filter === f.key
-                    ? 'border-[#006FFF] text-[#006FFF] font-medium'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                    ? 'font-medium text-white'
+                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                 )}
+                style={filter === f.key ? { backgroundColor: brand } : undefined}
                 onClick={() => setFilter(f.key)}
               >
                 {f.label}
@@ -144,7 +153,7 @@ export function SiteManagerClient({ consoles, tenants, currentTenantId, userName
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500">Unlocked</span>
-                      <span className="font-medium text-[#006FFF]">{console.unlocked}</span>
+                      <span className="font-medium" style={{ color: brand }}>{console.unlocked}</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-gray-500">Open</span>
