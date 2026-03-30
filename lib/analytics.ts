@@ -553,7 +553,6 @@ export async function getAnalyticsOverview(
   }
 
   const openStartByDoor = new Map<string, number>()
-  // TODO(analytics-duration): revisit unlocked/unauthorized duration math and edge cases before re-enabling by default.
   for (const evt of openCloseEvents) {
     const unifiDoorId = String(evt.unifiDoorId ?? '')
     if (!unifiDoorId) continue
@@ -750,7 +749,6 @@ export async function getAnalyticsOverview(
     },
     openCloseKpi: { opened, closed, unlockedSeconds, unauthorizedOpenSeconds },
     analyticsPreferences: {
-      // TODO(analytics): remove/rename these temporary feature flags after duration logic is validated.
       hideUnlockedTime: tenant.analyticsPrefs?.hideUnlockedTime !== false,
       hideUnauthorizedOpenTime: tenant.analyticsPrefs?.hideUnauthorizedOpenTime !== false,
     },

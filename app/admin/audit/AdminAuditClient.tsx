@@ -68,6 +68,7 @@ export function AdminAuditClient({ tenants, users, doors }: Props) {
   const [total, setTotal] = useState(0)
   const [totalPages, setTotalPages] = useState(1)
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [refreshTick, setRefreshTick] = useState(0)
   const actionDropdownRef = useRef<HTMLDivElement>(null)
 
@@ -238,6 +239,32 @@ export function AdminAuditClient({ tenants, users, doors }: Props) {
     return `${selectedActions.length} actions selected`
   }, [selectedActions])
 
+  async function exportXlsx() {
+    setExporting(true)
+    try {
+      const params = new URLSearchParams()
+      if (tenantId) params.set('tenantId', tenantId)
+      if (userId) params.set('userId', userId)
+      if (selectedActions.length > 0) params.set('action', selectedActions.join(','))
+      if (outcome) params.set('outcome', outcome)
+      if (entityType) params.set('entityType', entityType)
+      if (query.trim()) params.set('q', query.trim())
+      if (since) params.set('since', String(Math.floor(new Date(since).getTime() / 1000)))
+      if (until) params.set('until', String(Math.floor(new Date(`${until}T23:59:59`).getTime() / 1000)))
+      const res = await fetch(`/api/audit/export?${params}`)
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `audit-log-${new Date().toISOString().split('T')[0]}.xlsx`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div>
       <div className="mb-6">
@@ -246,13 +273,22 @@ export function AdminAuditClient({ tenants, users, doors }: Props) {
             <h1 className="text-2xl font-bold text-gray-900">Audit Logs</h1>
             <p className="text-sm text-gray-500 mt-1">System actions performed inside this portal</p>
           </div>
-          <button
-            className="btn-secondary text-xs"
-            onClick={() => setRefreshTick((v) => v + 1)}
-            disabled={loading}
-          >
-            {loading ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary text-xs"
+              onClick={exportXlsx}
+              disabled={exporting || loading}
+            >
+              {exporting ? 'Exporting...' : 'Export XLSX'}
+            </button>
+            <button
+              className="btn-secondary text-xs"
+              onClick={() => setRefreshTick((v) => v + 1)}
+              disabled={loading}
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
       </div>
 

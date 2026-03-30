@@ -16,8 +16,8 @@ interface Props {
 
 export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
   const [tenantId, setTenantId] = useState(initialTenantId)
-  const [hideUnlockedTime, setHideUnlockedTime] = useState(true)
-  const [hideUnauthorizedOpenTime, setHideUnauthorizedOpenTime] = useState(true)
+  const [hideUnlockedTime, setHideUnlockedTime] = useState(false)
+  const [hideUnauthorizedOpenTime, setHideUnauthorizedOpenTime] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -99,8 +99,8 @@ export function SitePreferencesClient({ tenants, initialTenantId }: Props) {
 
       <div className="card p-5 space-y-4">
         <div>
-          <h2 className="font-semibold text-gray-900">Analytics (Temporary Controls)</h2>
-          <p className="text-sm text-gray-500 mt-1">Hide metrics that are still being refined.</p>
+          <h2 className="font-semibold text-gray-900">Analytics Display</h2>
+          <p className="text-sm text-gray-500 mt-1">Control which analytics sections are visible for this site.</p>
         </div>
 
         <label className="flex items-start gap-3">

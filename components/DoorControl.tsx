@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { cn, formatTime } from '@/lib/utils'
 import type { DoorStatus, UnifiLockRule } from '@/types'
 
@@ -84,6 +84,29 @@ export function DoorControl({ door, permissions, onAction, timezone }: DoorContr
 
   // Live countdown for unlock rules that have an end time
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null)
+
+  // Keep a stable ref to onAction so the SSE effect doesn't re-run on every render
+  const onActionRef = useRef(onAction)
+  onActionRef.current = onAction
+
+  // Connect to the UniFi event stream for real-time door status updates.
+  // On each door_update, trigger the parent's refresh with a minimum 1.5s debounce.
+  useEffect(() => {
+    let lastRefresh = 0
+    const MIN_INTERVAL = 1500
+
+    function queueRefresh() {
+      const now = Date.now()
+      if (now - lastRefresh < MIN_INTERVAL) return
+      lastRefresh = now
+      onActionRef.current()
+    }
+
+    const es = new EventSource(`/api/tenants/${door.tenantId}/events`)
+    es.addEventListener('door_update', queueRefresh)
+    es.addEventListener('error', () => es.close())
+    return () => es.close()
+  }, [door.tenantId])
 
   // Reset lastAction when the door re-locks
   useEffect(() => {

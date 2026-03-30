@@ -49,8 +49,8 @@ const TenantSchema = new Schema<ITenant>(
       default: [],
     },
     analyticsPrefs: {
-      hideUnlockedTime: { type: Boolean, default: true },
-      hideUnauthorizedOpenTime: { type: Boolean, default: true },
+      hideUnlockedTime: { type: Boolean, default: false },
+      hideUnauthorizedOpenTime: { type: Boolean, default: false },
     },
   },
   { timestamps: true }
