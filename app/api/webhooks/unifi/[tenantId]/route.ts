@@ -131,34 +131,39 @@ async function resolveActorForWebhookEvent(
   }
 }
 
-async function processWebhookEvent(tenantId: string, payload: Record<string, unknown>) {
+function extractDoorId(payload: Record<string, unknown>): string | null {
+  const data = payload.data as Record<string, unknown> | undefined
+  const location = data?.location as Record<string, unknown> | undefined
+  const device = data?.device as Record<string, unknown> | undefined
+  return (location?.id ?? device?.location_id) as string | null ?? null
+}
+
+// Runs after the 200 has been returned — enriches the already-saved event with actor info.
+// If frozen by Vercel before completing, the raw event is already persisted.
+async function enrichSavedEvent(
+  eventId: string,
+  tenantId: string,
+  payload: Record<string, unknown>,
+  unifiDoorId: string,
+  event: string,
+  timestamp: Date
+): Promise<void> {
   try {
-    await connectDB()
-    const data = payload.data as Record<string, unknown> | undefined
-    const location = data?.location as Record<string, unknown> | undefined
-    const device = data?.device as Record<string, unknown> | undefined
-    const unifiDoorId = (location?.id ?? device?.location_id) as string | undefined
-    if (!unifiDoorId) return
-
-    const event = payload.event as string ?? ''
-    const timestamp = new Date()
-    const timestampSec = Math.floor(timestamp.getTime() / 1000)
-
     const tenant = await Tenant.findById(tenantId).select('unifiHost unifiApiKey').lean()
-    const shouldResolveActor = event.startsWith('access.')
-    const enrichedPayload = shouldResolveActor && tenant
-      ? await resolveActorForWebhookEvent(
-          { _id: tenant._id, unifiHost: tenant.unifiHost, unifiApiKey: tenant.unifiApiKey },
-          payload,
-          unifiDoorId,
-          event,
-          timestampSec
-        )
-      : payload
-
-    await WebhookEvent.create({ tenantId, unifiDoorId, event, timestamp, payload: enrichedPayload })
+    if (!tenant) return
+    const timestampSec = Math.floor(timestamp.getTime() / 1000)
+    const enrichedPayload = await resolveActorForWebhookEvent(
+      { _id: tenant._id, unifiHost: tenant.unifiHost, unifiApiKey: tenant.unifiApiKey },
+      payload,
+      unifiDoorId,
+      event,
+      timestampSec
+    )
+    if (enrichedPayload !== payload) {
+      await WebhookEvent.findByIdAndUpdate(eventId, { payload: enrichedPayload })
+    }
   } catch (err) {
-    console.error('[webhook] processWebhookEvent error:', (err as Error).message)
+    console.error('[webhook] enrichSavedEvent error:', (err as Error).message)
   }
 }
 
@@ -250,9 +255,28 @@ export async function POST(req: Request, { params }: Params) {
     return new Response('Invalid payload', { status: 400 })
   }
 
-  // Delivery succeeded at transport/auth level; process asynchronously after acking.
-  void recordWebhookDeliveryMetric(tenantId, 'success')
+  // Save raw event synchronously before returning 200.
+  // Vercel freezes the function after the response is sent, so any async work
+  // fired after the return is not guaranteed to complete. Saving here ensures
+  // the event is persisted regardless of what happens next.
+  const unifiDoorId = extractDoorId(payload)
+  const event = payload.event as string ?? ''
+  const timestamp = new Date()
+  let savedId: string | null = null
+  if (unifiDoorId) {
+    try {
+      const saved = await WebhookEvent.create({ tenantId, unifiDoorId, event, timestamp, payload })
+      savedId = saved._id.toString()
+    } catch (err) {
+      console.error('[webhook] WebhookEvent.create error:', (err as Error).message)
+    }
+  }
 
-  void processWebhookEvent(tenantId, payload)
+  // Fire-and-forget after the response — these are best-effort.
+  void recordWebhookDeliveryMetric(tenantId, 'success')
+  if (savedId && event.startsWith('access.')) {
+    void enrichSavedEvent(savedId, tenantId, payload, unifiDoorId!, event, timestamp)
+  }
+
   return new Response('OK', { status: 200 })
 }
