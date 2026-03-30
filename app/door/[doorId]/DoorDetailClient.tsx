@@ -106,6 +106,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
   const statusQueuedRef = useRef(false)
   const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastStatusFetchAtRef = useRef(0)
+  const lastLogRefreshAtRef = useRef(0)
 
   const [scheduleOpen, setScheduleOpen] = useSessionBoolean('door.section.unlockSchedule', true)
   const [chartOpen, setChartOpen] = useSessionBoolean('door.section.activityChart', true)
@@ -239,6 +240,13 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
       setRefreshKey((k) => k + 1)
     }, 1500)
   }, [fetchStatusNow])
+
+  const handleRealtimeLogEvent = useCallback(() => {
+    const now = Date.now()
+    if (now - lastLogRefreshAtRef.current < 1500) return
+    lastLogRefreshAtRef.current = now
+    setRefreshKey((k) => k + 1)
+  }, [])
 
   useEffect(() => {
     queueStatusRefresh(true)
@@ -471,6 +479,7 @@ export function DoorDetailClient({ door: initialDoor, permissions, controllerErr
                     refreshTrigger={refreshKey}
                     accessLogsOverride={sharedLogs}
                     accessLogsLoadingOverride={sharedLogsLoading}
+                    onRealtimeEvent={handleRealtimeLogEvent}
                   />
                 </div>
               )}
